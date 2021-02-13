@@ -1,2 +1,2 @@
 # TrackPowerRankings
-Shiny application that auto generates power rankings based on indoor track performances for NCAA runners.
+Shiny application that auto generates power rankings based on indoor track performances for NCAA runners. After spending time writing for [TheStrideReport] (TheStrideReport.com), it came to my attention there really does not exist any true power rankings for NCAA runners. As a former runner myself, I thought it would be interesting to create a mathematical way of auto generating rankings with no subjective nature. This works for all three divisions and both genders. My goal is to expand more on how it works and the features available through the app. You can use the link in the Github repo to go take a look at the live version!
