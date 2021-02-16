@@ -3,35 +3,36 @@ library(shiny)
 library(shinydashboard)
 library(tidyverse)
 library(ggplot2)
-library(ggpubr)
-library(Hmisc)
-library(stats)
-library(knitr)
 library(DT)
 library(dplyr)
-library(rvest)
 library(RPostgreSQL)
 library(DBI)
 library(RSQLite)
 library(reshape2)
 library(yaml)
-library(rvest)
+library(config)
+
+options(shiny.trace = TRUE)
 
 # Read connection data from yaml
-yml <- read_yaml("aws.yaml")
+#yml <- read_yaml("aws.yaml")
+cred <- get('aws')
 
 # Connect to AWS
 # Connect to database
 aws <- dbConnect(
-    RPostgres::Postgres(),
-    host = yml$host,
-    user = yml$user,
-    password = yml$password,
-    port = yml$port
+    RPostgreSQL::PostgreSQL(),
+    host = cred$server,
+    user = cred$user,
+    password = cred$password,
+    port = cred$port
 )
-
-# Query the data
-df <- dbGetQuery(aws, "SELECT * FROM current_power_rankings")
+# 
+# # Query the data
+df <- dbGetQuery(aws, 'SELECT * FROM current_power_rankings WHERE "LOAD_DATE" IN (SELECT MAX(DATE("LOAD_DATE")) FROM current_power_rankings)')
+# 
+# # Disconnect
+dbDisconnect(aws)
 
 # Drop load date
 df <- df %>% select(-c("LOAD_DATE"))

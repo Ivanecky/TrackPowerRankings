@@ -3,8 +3,6 @@ library(shiny)
 library(shinydashboard)
 library(tidyverse)
 library(ggplot2)
-library(ggpubr)
-library(Hmisc)
 library(stats)
 library(knitr)
 library(dplyr)
@@ -59,7 +57,7 @@ ui = dashboardPage(
                         p("Sure. It can be a little confusing so here is an explanation of our developed metrics:"),
                         p("Total Points: The total number of points the ranking system gave an athlete based on their standing in the NCAA and their specific time."),
                         p("Events: Number of events an athlete is in the NCAA Top 100 for at the moment."),
-                        p("Points Per Event: The average number of points (out of 200) an athlete has for all their events."),
+                        p("Points Per Event: The average number of points (out of 230) an athlete has for all their events."),
                         p("Preliminary Rank Score: Our first scoring iteration done. Won't give away the full details for this but it helps us for our next metric."),
                         p("Final Rank Score: The final ranking metric we use to order the athletes. Developed using the Preliminary Rank Score."),
                         p("Overall Power Ranking: Where the athlete sits in their respective Division and Gender after ordering by our Final Rank Score."),
@@ -67,7 +65,8 @@ ui = dashboardPage(
                         p("In short - data limitations. Read more below."),
                     h2("Some of your rankings seem...bad."),
                         p("Well, that's not a question but it's a fair point. We are in the early stages of developing these (automated) rankings which means 1. There's a lot of improvements to be made and 2. We don't make manual 'corrections', what the algorithms develop is what you get.
-                          No matter how good we tune them, there will ALWAYS be errors. The goal is that with more time and work, we can really dial these in. Of course, if you are upset about a ranking, just remember, blame the computer, not us."),
+                          No matter how good we tune them, there will ALWAYS be errors. The goal is that with more time and work, we can really dial these in. We also don't count relays right now. It's coming but not available just yet.
+                          Of course, if you are upset about a ranking, just remember, blame the computer, not us."),
                     h2("What comes next?"),
                         p("We've mentioned things about our next steps already but there are a bunch of future adaptations that we'd love to build. Creating better algorithms, getting more (all) athletes into our system, adding more features like comparing runners, schools, etc. Maybe even doing 
                           cross country and/or outdoor track. There are plenty of opportunities to make this much better and this is essentially a 'beta' version. We wanted to get it public so you can check it out, maybe use it, and provide feedback on the good, bad, and otherwise. If you have 
