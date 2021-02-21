@@ -7,15 +7,23 @@ library(stats)
 library(knitr)
 library(dplyr)
 library(png)
+library(DT)
 
 # Define UI for application
 ui = dashboardPage(
+    
     dashboardHeader(title = "NCAA Indoor Track Power Rankings"),
     dashboardSidebar(
         # Select Division for data
         selectInput("division", 
                     "Select Division",
                     choices = c("D1", "D2", "D3")),
+        # Select Division for data
+        selectInput("year", 
+                    "Select Year",
+                    choices = c("2021", "2020", "2019", "2018", "2017")),
+        # Button to change data
+        actionButton("loadData", label = "Load Rankings"),
         # Sidebar tab menu
         sidebarMenu(
             menuItem("Power Rankings", tabName = "powerRankings"),
@@ -24,24 +32,35 @@ ui = dashboardPage(
     ),
     # Define body of application
     dashboardBody(
+        # Styling
         # Create tabs
         tabItems(
-            # Main page with rankings
+            ### MAIN PAGE WITH RANKINGS
             tabItem("powerRankings", 
                 fluidRow(
-                  h1("NCAA Indoor Track Power Rankings"),
-                  p("Please read the 'About' page to answer questions.")
+                  tags$h1("NCAA Indoor Track Power Rankings"),
+                  p("Please read the 'About' page to answer questions. Select a year and division and press 'Load Rankings' to generate rankings")
                 ),
+                # Info box row
                 fluidRow(
-                    column(12,
-                           h1("Mens Rankings"),
-                           dataTableOutput('menRank')
+                    valueBoxOutput("dataUpdated"),
+                    valueBoxOutput("mensAthletes"),
+                    valueBoxOutput("womensAthletes")
+                ),
+                # Mens rankings
+                fluidRow(
+                    box(
+                        title = "Mens Power Rankings", solidHeader = TRUE,
+                        collapsible = TRUE, background = "light-blue", width = '100%',
+                        DT::dataTableOutput('menRank'), style = "overflow-x: scroll;"
                     )
                 ),
+                # Womens rankings
                 fluidRow(
-                    column(12,
-                           h1("Womens Rankings"),
-                           dataTableOutput ('womenRank')
+                    box(
+                        title = "Womens Power Rankings", solidHeader = TRUE,
+                        collapsible = TRUE, background = "light-blue", width = '100%',
+                        DT::dataTableOutput('womenRank'), style = "overflow-x: scroll;"
                     )
                 )
             ),
@@ -58,9 +77,7 @@ ui = dashboardPage(
                         p("Total Points: The total number of points the ranking system gave an athlete based on their standing in the NCAA and their specific time."),
                         p("Events: Number of events an athlete is in the NCAA Top 100 for at the moment."),
                         p("Points Per Event: The average number of points (out of 230) an athlete has for all their events."),
-                        p("Preliminary Rank Score: Our first scoring iteration done. Won't give away the full details for this but it helps us for our next metric."),
-                        p("Final Rank Score: The final ranking metric we use to order the athletes. Developed using the Preliminary Rank Score."),
-                        p("Overall Power Ranking: Where the athlete sits in their respective Division and Gender after ordering by our Final Rank Score."),
+                        p("Power Ranking: Where the athlete sits in their respective Division and Gender after ordering by our Final Rank Score."),
                     h2("Why aren't all the athletes in the NCAA in the lists?"),
                         p("In short - data limitations. Read more below."),
                     h2("Some of your rankings seem...bad."),
