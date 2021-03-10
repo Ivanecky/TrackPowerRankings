@@ -26,7 +26,8 @@ ui = dashboardPage(
         actionButton("loadData", label = "Load Rankings"),
         # Sidebar tab menu
         sidebarMenu(
-            menuItem("Power Rankings", tabName = "powerRankings"),
+            menuItem("Individual Power Rankings", tabName = "powerRankings"),
+            #menuItem("Team Power Rankings", tabName = "teamRankings"),
             menuItem("About", tabName = "about")
         )
     ),
@@ -35,7 +36,7 @@ ui = dashboardPage(
         # Styling
         # Create tabs
         tabItems(
-            ### MAIN PAGE WITH RANKINGS
+            ### Individual Power Rankings
             tabItem("powerRankings", 
                 fluidRow(
                   tags$h1("NCAA Indoor Track Power Rankings"),
@@ -64,6 +65,36 @@ ui = dashboardPage(
                     )
                 )
             ),
+            
+            ### Team Power Rankings
+            # tabItem("teamRankings",
+            #         fluidRow(
+            #             tags$h1("NCAA Indoor Team Power Rankings"),
+            #             p("Please read the 'About' page to answer questions. Select a year and division and press 'Load Rankings' to generate rankings")
+            #         ),
+            #         # Info box row
+            #         fluidRow(
+            #             valueBoxOutput("dataUpdated"),
+            #             valueBoxOutput("mensTeams"),
+            #             valueBoxOutput("womensTeams")
+            #         ),
+            #         # Mens rankings
+            #         fluidRow(
+            #             box(
+            #                 title = "Mens Team Power Rankings", solidHeader = TRUE,
+            #                 collapsible = TRUE, background = "light-blue", width = '100%',
+            #                 DT::dataTableOutput('menTeamRank'), style = "overflow-x: scroll;"
+            #             )
+            #         ),
+            #         # Womens rankings
+            #         fluidRow(
+            #             box(
+            #                 title = "Womens Team Power Rankings", solidHeader = TRUE,
+            #                 collapsible = TRUE, background = "light-blue", width = '100%',
+            #                 DT::dataTableOutput('womenTeamRank'), style = "overflow-x: scroll;"
+            #             )
+            #         )
+            # ),
             # About page
             tabItem("about",
                 h1("Welcome to the NCAA Indoor Track Power Rankings"),

@@ -1,0 +1,245 @@
+---
+title: "Predictive Testing"
+author: "Samuel Ivanecky"
+date: "3/7/2021"
+output: html_document
+---
+
+# Setup
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidymodels)
+library(httr)
+library(dplyr)
+library(jsonlite)
+library(RPostgreSQL)
+library(DBI)
+library(RSQLite)
+library(reshape2)
+library(yaml)
+library(rvest)
+
+# Connect to AWS
+# Connect to database
+aws <- dbConnect(
+  RPostgres::Postgres(),
+  host = 'awsdb.cw8iivmua2hj.us-east-2.rds.amazonaws.com',
+  user = 'postgres',
+  password = 'password',
+  port = 5432
+)
+
+# Source functions
+source("Scraping_Fxns.R")
+```
+
+# Connect to Data
+```{r}
+lines <- dbGetQuery(aws, 'SELECT DISTINCT * FROM performance_lines')
+runners <- dbGetQuery(aws, 'SELECT DISTINCT * FROM runners_grouped')
+```
+
+# Specify Names & Events
+```{r}
+names <- c("WESLEY KIPTOO", "AARON BIENENFELD", "ALEC SANDUSKY", "ERIC HAMER", "AMON KEMBOI", "ADRIAAN WILDSCHUTT", "GILBERT BOIT", "SHEA FOSTER", "JACOB MCLEOD", "BEN VEATCH", "MORGAN BEADLESCOMB", "MATT YOUNG", "COLTON JOHNSEN", "ANDREW JORDAN", 
+           "ALEC BASTEN", "DEVIN MYRER")
+
+event <- "5000m"
+
+division <- "D1"
+
+gender <- "M"
+```
+
+```{r error=FALSE, warning=FALSE}
+generatePredictions <- function(names, event, gender, division) {
+  # Loop to create predictions
+  names <- names
+  runner_name <- c()
+  runner_time <- c()
+  simulation <- c()
+  
+  # Get top performances
+  perfs_cy <- lines %>%
+  filter(EVENT == event & (NAME %in% names)) %>% #& (YEAR %in% c("2021", "2020"))) %>%
+    group_by(NAME) %>%
+    #arrange(TIME) %>%
+    #slice_head(n = 2) %>%
+    mutate(
+      TIME_ADJ = case_when(
+        YEAR == '2021' ~ TIME,
+        YEAR == '2020' ~ TIME * 1.02,
+        T ~ TIME * 1.05
+      )
+    ) %>%
+    arrange(TIME_ADJ) %>%
+    slice_head(n = 2)
+
+  # Get all performances
+  perfs_all <- lines %>%
+    filter(EVENT == event & (NAME %in% names) & (YEAR %in% c("2021", "2020", "2019"))) %>%
+    group_by(NAME) %>%
+    arrange(TIME) %>%
+    slice_head(n = 3) %>%
+    mutate(
+      TIME_ADJ = TIME
+      )
+  
+  # Get sd of group
+  grp_sd <- sd(perfs_all$TIME_ADJ, na.rm = T) * 1.5
+    
+  
+    for(j in 1:1000)
+    {
+      # Print out for running simulation
+      print(paste0("Running simulation: ", j))
+      
+      for(i in 1:length(names))
+      {
+        # Subset data to runner
+        results <- perfs_cy %>% filter(NAME == names[i])
+        results_all <- perfs_all %>% filter(NAME == names[i])
+        # Create an SD to use
+        temp_sd <- case_when(
+          (sd(results_all$TIME_ADJ, na.rm = T) > grp_sd) | is.na(sd(results_all$TIME_ADJ)) ~ grp_sd,
+          T ~ sd(results_all$TIME_ADJ, na.rm = T)
+        )
+        # Generate random sample
+        pred_time <- rnorm(1, mean(results$TIME_ADJ, na.rm = T), temp_sd)
+        # Add time and name to vectors
+        runner_name <- append(runner_name, names[i])
+        runner_time <- append(runner_time, pred_time)
+        simulation <- append(simulation, j)
+      }
+    }
+  
+  # Dataframe of results
+  sim <- as.data.frame(cbind(runner_name, runner_time, simulation)) %>%
+    mutate(
+      runner_time = as.numeric(runner_time)
+    )
+  
+  sim_results <- sim %>%
+    group_by(simulation) %>%
+    arrange(runner_time) %>%
+    mutate(
+      pred_place = 1:n()
+    )
+  
+  sim_grouped <- sim_results %>%
+    group_by(runner_name) %>%
+    summarise(
+      pred_wins = n_distinct(simulation[pred_place==1]),
+      avg_pred_place = mean(pred_place)
+    ) %>%
+    mutate(
+      pred_win_prob = round((pred_wins / 1000) * 100, 2)
+    )
+  
+  # Assign division and gender
+  sim_grouped$Gender <- gender
+  sim_grouped$Division <- division
+  
+  # Return data
+  return(sim_grouped)
+}
+```
+
+```{r}
+generatePredictions2 <- function(names, event) {
+  # Loop to create predictions
+  names <- names
+  runner_name <- c()
+  runner_time <- c()
+  simulation <- c()
+  
+  perfs <- lines %>%
+  filter(EVENT == event & (NAME %in% names) & (YEAR %in% c("2021", "2020", "2019"))) %>%
+    group_by(NAME) %>%
+    arrange(TIME) %>%
+    slice_head(n = 3)
+  
+    for(j in 1:2000)
+    {
+      # Print out for running simulation
+      print(paste0("Running simulation: ", j))
+      
+      for(i in 1:length(names))
+      {
+        # Subset data to runner
+        results <- perfs %>% filter(NAME == names[i])
+
+        # Generate random sample
+        pred_time <- runif(1, min(results$TIME), max(results$TIME))
+        # Add time and name to vectors
+        runner_name <- append(runner_name, names[i])
+        runner_time <- append(runner_time, pred_time)
+        simulation <- append(simulation, j)
+      }
+    }
+  
+  # Dataframe of results
+  sim <- as.data.frame(cbind(runner_name, runner_time, simulation)) %>%
+    mutate(
+      runner_time = as.numeric(runner_time)
+    )
+  
+  sim_results <- sim %>%
+    group_by(simulation) %>%
+    arrange(runner_time) %>%
+    mutate(
+      pred_place = 1:n()
+    )
+  
+  sim_grouped <- sim_results %>%
+    group_by(runner_name) %>%
+    summarise(
+      pred_wins = n_distinct(simulation[pred_place==1]),
+      avg_pred_place = mean(pred_place)
+    ) %>%
+    mutate(
+      pred_win_prob = round((pred_wins / 2000) * 100, 2)
+    )
+  
+  # Return data
+  return(sim_grouped)
+}
+```
+
+
+```{r warning=FALSE}
+# Generate womens
+preds <- generatePredictions(names, event, gender, division)
+#preds2 <- generatePredictions2(names, event)
+# Add event name and upload date, rename columns
+names(preds) <- c("Runner", "PredictedWins", "AvgPredPlace", "PredWinProb", "Gender", "Division")
+preds <- preds %>%
+  mutate(
+    Event = event,
+    UploadDate = lubridate::today()
+  )
+```
+
+##########################################
+# Upload to Table
+```{r}
+# Connect to database
+aws <- dbConnect(
+  RPostgres::Postgres(),
+  host = 'awsdb.cw8iivmua2hj.us-east-2.rds.amazonaws.com',
+  user = 'postgres',
+  password = 'password',
+  port = 5432
+)
+
+#dbRemoveTable(aws, "team_rankings")
+#dbCreateTable(aws, "ncaa_predictions", preds)
+dbWriteTable(aws, "ncaa_predictions", preds, append = TRUE)
+```
+
+# Create a CVS
+```{r}
+womens <- dbGetQuery(aws, 'SELECT * FROM ncaa_predictions')
+write.csv(womens, "womens_preds.csv")
+```
+

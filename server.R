@@ -25,48 +25,87 @@ aws <- dbConnect(
     password = yml$password,
     port = yml$port
 )
-# 
-# # Query the current data
+ 
+# # Query the current data for individuals
 df <- dbGetQuery(aws, 
                  'SELECT 
-                    *
+                    "ATHLETE" AS "Athlete",
+                    "TEAM" AS "Team",
+                    "YEAR" AS "Class",
+                    "GENDER" AS "Gender",
+                    "POINTS" AS "Total Points",
+                    "EVENTS" AS "Events",
+                    "PTS_PER_EVENT" AS "Points Per Event",
+                    "RANK_NUM" AS "Power Ranking",
+                    "EVENT_YEAR" AS "Event Year",
+                    "DVISION" AS "Division",
+                    "LOAD_DATE" AS "Load Date"
                  FROM current_power_rankings 
                  WHERE "LOAD_DATE" IN (SELECT MAX(DATE("LOAD_DATE")) FROM current_power_rankings)
                  AND "EVENT_YEAR"::int8 = 2021 ')
 
 # Query historic data
-df_hist <- dbGetQuery(aws, 'SELECT * FROM current_power_rankings
+df_hist <- dbGetQuery(aws, 'SELECT
+                                "ATHLETE" AS "Athlete",
+                                "TEAM" AS "Team",
+                                "YEAR" AS "Class",
+                                "GENDER" AS "Gender",
+                                "POINTS" AS "Total Points",
+                                "EVENTS" AS "Events",
+                                "PTS_PER_EVENT" AS "Points Per Event",
+                                "RANK_NUM" AS "Power Ranking",
+                                "EVENT_YEAR" AS "Event Year",
+                                "DVISION" AS "Division",
+                                "LOAD_DATE" AS "Load Date"
+                            FROM current_power_rankings
                             WHERE "EVENT_YEAR"::int8 <> 2021 ')
+
+# Query team data
+teams <- dbGetQuery(aws,
+                    'SELECT
+                        "TEAM" AS "Team",
+                        "GENDER" AS "Gender",
+                        "athletes" AS "Athletes",
+                        "events" AS "Events",
+                        "avg_rank" AS "Average Power Ranking",
+                        "avg_rank_score" AS "Average Ranking Score",
+                        "total_points" AS "Total Points",
+                        "avg_points_per_event" AS "Average Points Per Event",
+                        "division" AS "Division",
+                        "load_date" AS "Load Date"
+                    FROM team_rankings 
+                    WHERE "load_date" IN (SELECT MAX(DATE("load_date")) FROM team_rankings) 
+                    AND "athletes" > 1 ')
 
 # # Disconnect
 dbDisconnect(aws)
 
-# Bind data
+# Bind individual data
 all_df <- rbind(df, df_hist)
-
-# Drop load date
-all_df <- all_df %>% select(-c("LOAD_DATE", "OVERALL_RANK", "RANK"))
-
-# Rename columns
-colnames(all_df) <- c("Athlete", "Team", "Class", "Gender", "Total Points", "Events", "Points Per Event", "Power Ranking", "Event Year", "Division")
 
 # Reorder columns
 all_df <- all_df %>%
-    select(`Power Ranking`, Athlete, Team, Class, Gender, Division, `Event Year`, `Total Points`, Events, `Points Per Event`) %>%
+    select(`Power Ranking`, Athlete, Team, Class, Gender, Division, `Event Year`, `Total Points`, Events, `Points Per Event`, `Load Date`) %>%
     mutate(
         `Points Per Event` = round(`Points Per Event`, 2)
     ) %>%
     arrange(
         `Power Ranking`
     )
-    
 
 # Split by gender
 men <- all_df %>% filter(Gender == 'M')
 women <- all_df %>% filter(Gender == 'F')
 
+# Reorder teams columns & split by gender
+
+menTeams <- teams %>% filter(Gender == 'M')
+womenTeams <- teams %>% filter(Gender == 'F')
+
 # Define server logic required to draw a histogram
 shinyServer(function(input, output) {
+    
+    ### INPUTS
     
     # Set year
     setYear <- reactive({
@@ -78,13 +117,17 @@ shinyServer(function(input, output) {
         return(input$division)
     })
     
+    
+    ### DATA HANDLING FUNCTIONS
+    
     # Function to select which division to query
+    # Individuals
     mensData <- eventReactive(input$loadData, {
         df <- men %>% 
             filter(Division == setDiv() & `Event Year` == setYear())
         
         # Drop unneeded cols
-        df <- df %>% select(-c(`Event Year`, Gender, Division))
+        df <- df %>% select(-c(`Event Year`, Gender, Division, `Load Date`))
         
         return(df)
     }, ignoreNULL = TRUE)
@@ -94,15 +137,37 @@ shinyServer(function(input, output) {
             filter(Division == setDiv() & `Event Year` == setYear())
         
         # Drop unneeded cols
-        df <- df %>% select(-c(`Event Year`, Gender, Division))
+        df <- df %>% select(-c(`Event Year`, Gender, Division, `Load Date`))
         
         return(df)
     }, ignoreNULL = TRUE)
     
+    # Teams
+    menTeamData <- eventReactive(input$loadData, {
+        df <- menTeams %>%
+            filter(Division == setDiv())
+
+        # Drop unneeded cols
+        df <- df %>% select(-c(Gender, Division))
+
+        return(df)
+    }, ignoreNULL = TRUE)
+
+    womenTeamData <- eventReactive(input$loadData, {
+        df <- womenTeams %>%
+            filter(Division == setDiv())
+
+        # Drop unneeded cols
+        df <- df %>% select(-c(Gender, Division))
+
+        return(df)
+    }, ignoreNULL = TRUE)
+    
+    #### CONTENT TO BE DISPLAYED
     ### Info Boxes for Rankings Pages
     output$dataUpdated <- renderInfoBox({
         # Get data
-        updateDate <- max(df$LOAD_DATE)
+        updateDate <- max(df$`Load Date`)
         valueBox(
             updateDate, "Data Updated On"
         )
@@ -126,25 +191,20 @@ shinyServer(function(input, output) {
         )
     })
     
-    ### Data Tables for Mens and Womens Rankings
+    ### Data Tables for Mens and Womens Individual Rankings
     
     output$menRank = DT::renderDataTable(mensData(), rownames = FALSE, filter = 'top')
     
     output$womenRank = DT::renderDataTable(womensData(), rownames = FALSE, filter = 'top')
     
+    ### Data Tables for Mens and Womens Team Rankings
+    
+    # output$menTeamRank = DT::renderDataTable(menTeamData(), rownames = FALSE, filter = 'top')
+    # 
+    # output$womenTeamRank = DT::renderDataTable(womenTeamData(), rownames = FALSE, filter = 'top')
+    
     ######################################################
     
-    ### ATHLETE SEARCH FUNCTIONS
-    
-    # Get searched athlete
-    getRunner <- eventReactive(input$searchRunner, {
-        # Filter data for athlete
-        runner <- all_df %>%
-            filter(grepl(lower(input$runnerName), lower(Athlete)))
-        
-        # Return runner's data
-        return(runner)
-    })
     
 })
 
