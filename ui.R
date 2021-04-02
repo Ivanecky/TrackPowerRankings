@@ -12,7 +12,7 @@ library(DT)
 # Define UI for application
 ui = dashboardPage(
     
-    dashboardHeader(title = "NCAA Indoor Track Power Rankings"),
+    dashboardHeader(title = "DPI"),
     dashboardSidebar(
         # Select Division for data
         selectInput("division", 
@@ -39,7 +39,7 @@ ui = dashboardPage(
             ### Individual Power Rankings
             tabItem("powerRankings", 
                 fluidRow(
-                  tags$h1("NCAA Indoor Track Power Rankings"),
+                  tags$h1("Distance Power Index"),
                   p("Please read the 'About' page to answer questions. Select a year and division and press 'Load Rankings' to generate rankings")
                 ),
                 # Info box row
