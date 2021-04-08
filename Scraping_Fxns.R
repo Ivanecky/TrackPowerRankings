@@ -160,11 +160,16 @@ runnerScrape = function(url){
           xc_flag ~ paste0(result_split[1], " XC"),
           T ~ result_split[1]
         )
+        # Get place (need code to handle sprinters)
+        place <- case_when(
+          length(result_split) == 5 ~ result_split[4],
+          T ~ result_split[3]
+        )
         # Get the pieces
         years <- append(years, year)
         events <- append(events, event)
         times <- append(times, result_split[2])
-        places <- append(places, result_split[3])
+        places <- append(places, place)
       }
     }
   }
@@ -204,21 +209,6 @@ runnerScrape = function(url){
     
     # Apply function to convert times to numbers
     athlete$TIME = sapply(athlete$TIME, handleTimes)
-    
-    # # Gruop athlete data
-    # athlete <- athlete %>%
-    #   group_by(EVENT) %>%
-    #   summarise(
-    #     AVG_PLACE = round(mean(PLACE, na.rm = T), 2),
-    #     AVG_TIME = round(mean(TIME), 2),
-    #     PR = min(TIME),
-    #     WINS = n_distinct(TIME[PLACE == 1]),
-    #     TIMES.RUN = n()
-    #   ) %>%
-    #   mutate(
-    #     WIN_PCT = round(((WINS / TIMES.RUN) * 100), 2)
-    #   )
-    
     athlete$NAME = runner_name
     athlete$GENDER = gender
     athlete$TEAM = team_name

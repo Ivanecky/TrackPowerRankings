@@ -306,12 +306,9 @@ readPerfListOutdoor <- function(url){
   results <- as.data.frame(tables[1])
   
   # Check number of columns (sprints have wind)
-  if (ncol(results) == 8)
-  {
+  if (ncol(results) == 8) {
     names(results) <- c("PLACE", "ATHLETE", "YEAR", "TEAM", "TIME", "MEET", "MEET.DATE", "WIND")
-  }
-  else
-  {
+  } else {
     names(results) <- c("PLACE", "ATHLETE", "YEAR", "TEAM", "TIME", "MEET", "MEET.DATE") 
   }
   
@@ -332,17 +329,14 @@ readPerfListOutdoor <- function(url){
       names(temp) = c("PLACE", "ATHLETE", "YEAR", "TEAM", "TIME", "MEET", "MEET.DATE", "WIND")
       
       # Check to assign gender - womens tables should be "even" numbers
-      if ( i %% 2 == 0 ) 
-      { 
+      if ( i %% 2 == 0 ){ 
         temp$Gender = "F" 
+      } else { 
+        temp$Gender = "M" 
       }
-      else { temp$Gender = "M" }
       
       results = rbind(results, temp) 
-    }
-    # Make sure table has 7 columns for binding - some tables using conversions for field events have 8 columns
-    else if ( ncol(temp) == 7 )
-    { 
+    } else if ( ncol(temp) == 7 ) { 
       # Rename and bind
       names(temp) = c("PLACE", "ATHLETE", "YEAR", "TEAM", "TIME", "MEET", "MEET.DATE")
       
@@ -353,16 +347,14 @@ readPerfListOutdoor <- function(url){
         )
       
       # Check to assign gender - womens tables should be "even" numbers
-      if ( i %% 2 == 0 ) 
-      { 
+      if ( i %% 2 == 0 ){ 
         temp$Gender = "F" 
+      } else { 
+        temp$Gender = "M" 
       }
-      else { temp$Gender = "M" }
       
       results = rbind(results, temp) 
-    }
-    else if( ncol(temp) == 6)
-    {
+    } else if( ncol(temp) == 6) {
       relays = rbind(relays, temp)
     }
   }
@@ -370,15 +362,27 @@ readPerfListOutdoor <- function(url){
   # Events are not tied in to data - need to add them based on times
   results <- results %>%
     mutate(EVENT = case_when(
-      grepl('6\\.|7\\.', TIME) & (substr(TIME,1,1) %in% c('6','7')) & !grepl('7\\:', TIME) ~ '60m', # Have to add the substr clause to get only those that start with a 6
+      # Men
+      grepl('6\\.|7\\.', TIME) & (substr(TIME,1,1) %in% c('6','7')) & !grepl('7\\:', TIME) ~ '60m', 
       grepl('21\\.|22\\.|23\\.|24\\.|25\\.|26\\.', TIME) & (substr(TIME,1,2) %in% c('21','22','23','24','25','26')) ~ '200m',
       grepl('44\\.|45\\.|46\\.|47\\.|48\\.|49\\.|50\\.|51\\.|52\\.|53\\.|54\\.|55\\.|56\\.|57\\.|58\\.|59\\.', TIME) & 
         (substr(TIME,1,2) %in% c('44','45','46','47','48','49','50','51','52','53','54','55','56','57','58','59')) ~ '400m',
-      grepl('1:|2:', TIME) & (substr(TIME,1,2) %in% c('1:','2:')) ~ '800m',
+      grepl('1:|2:', TIME) & (substr(TIME,1,2) %in% c('1:','2:')) & Gender == 'M' ~ '800m',
       grepl('3:|4:|5:', TIME) & (substr(TIME,1,2) %in% c('3:','4:','5:')) ~ '1500m',
       grepl('7:|8:|9:|10:|11:|12:', TIME) & (substr(TIME,1,2) %in% c('7:', '8:', '9:', '10', '11', '12')) ~ 'Steeplechase',
       grepl('13:|14:|15:|16:|17:|18:', TIME) & (substr(TIME,1,3) %in% c('13:','14:','15:','16:','17:','18:')) ~ '5000m',
       grepl('27:|28:|29:|30:|31:|32:|33:|34:|35:|36:', TIME) & (substr(TIME,1,3) %in% c('27:','28:','29:','30:','31:','32:','33:','34:','35:','36:')) ~ '10000m',
+      
+      # Women
+      (grepl('48\\.|49\\.|50\\.|51\\.|52\\.|53\\.|54\\.|55\\.|56\\.|57\\.|58\\.|59\\.', TIME) & 
+        (substr(TIME,1,2) %in% c('48','49','50','51','52','53','54','55','56','57','58','59'))) |
+        (Gender == 'F' & grepl('1:', TIME))~ '400m',
+      grepl('1:5|2:', TIME) & (substr(TIME,1,2) == '2:' | substr(TIME,1,3) == '1:5') & Gender == 'F' ~ '800m',
+      grepl('3:|4:|5:', TIME) & (substr(TIME,1,2) %in% c('3:','4:','5:')) ~ '1500m',
+      grepl('7:|8:|9:|10:|11:|12:', TIME) & (substr(TIME,1,2) %in% c('7:', '8:', '9:', '10', '11', '12')) ~ 'Steeplechase',
+      grepl('13:|14:|15:|16:|17:|18:', TIME) & (substr(TIME,1,3) %in% c('13:','14:','15:','16:','17:','18:')) ~ '5000m',
+      grepl('27:|28:|29:|30:|31:|32:|33:|34:|35:|36:', TIME) & (substr(TIME,1,3) %in% c('27:','28:','29:','30:','31:','32:','33:','34:','35:','36:')) ~ '10000m',
+      
       T ~ 'OTHER'
     ))
   

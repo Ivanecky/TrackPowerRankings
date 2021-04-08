@@ -1,3 +1,5 @@
+# Code to generate line item performances from TFRRS.
+
 library(tidymodels)
 library(httr)
 library(dplyr)
