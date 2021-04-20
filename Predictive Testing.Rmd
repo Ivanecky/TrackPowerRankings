@@ -38,6 +38,7 @@ source("Scraping_Fxns.R")
 ```{r}
 lines <- dbGetQuery(aws, 'SELECT DISTINCT * FROM performance_lines')
 runners <- dbGetQuery(aws, 'SELECT DISTINCT * FROM runners_grouped')
+
 ```
 
 # Specify Names & Events

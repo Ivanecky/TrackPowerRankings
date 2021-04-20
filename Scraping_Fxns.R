@@ -9,6 +9,8 @@ library(reshape2)
 library(stringr)
 library(yaml)
 library(rvest)
+library(foreach)
+library(doParallel)
 
 # DYNAMICALLY SCRAPE TFRRS LINKS
 ## getURLs
@@ -81,7 +83,7 @@ runnerScrape = function(url){
     html_nodes("h3") %>%
     html_text()
   
-  runner_name = unlist(strsplit(runner_name[1], "[\n]"))[1]
+  runner_name <- unlist(strsplit(runner_name[1], "[\n]"))[1]
   
   # Extract team name
   team_name <- read_html(url) %>%
@@ -130,6 +132,9 @@ runnerScrape = function(url){
   events <- c()
   times <- c()
   places <- c()
+  race_names <- c()
+  dates <- c()
+  prelims <- c()
   
   for(i in 1:length(keep_nodes))
   {
@@ -137,14 +142,84 @@ runnerScrape = function(url){
     if(grepl("2005|2006|2007|2008|2009|2010|2011|2012|2013|2014|2015|2016|2017|2018|2019|2020|2021", keep_nodes[i]))
     {
       # Convert to string
-      node_str <- as.character(keep_nodes[i])
+      node_str <- as.character(keep_nodes[1])
+      
       # Extract year
-      year <- str_sub(node_str, nchar(node_str)-3, nchar(node_str))
+      year <- case_when(
+        grepl('2005', node_str) ~ '2005',
+        grepl('2006', node_str) ~ '2006',
+        grepl('2007', node_str) ~ '2007',
+        grepl('2008', node_str) ~ '2008',
+        grepl('2009', node_str) ~ '2009',
+        grepl('2010', node_str) ~ '2010',
+        grepl('2011', node_str) ~ '2011',
+        grepl('2012', node_str) ~ '2012',
+        grepl('2013', node_str) ~ '2013',
+        grepl('2014', node_str) ~ '2014',
+        grepl('2015', node_str) ~ '2015',
+        grepl('2016', node_str) ~ '2016',
+        grepl('2017', node_str) ~ '2017',
+        grepl('2018', node_str) ~ '2018',
+        grepl('2019', node_str) ~ '2019',
+        grepl('2020', node_str) ~ '2020',
+        grepl('2021', node_str) ~ '2021',
+        T ~ 'OTHER'
+      )
+      
+      # Extract month
+      temp_mo <- case_when(
+        grepl("Jan", node_str) ~ '1',
+        grepl('Feb', node_str) ~ '2',
+        grepl('Mar', node_str) ~ '3',
+        grepl("Apr", node_str) ~ '4',
+        grepl('May', node_str) ~ '5',
+        grepl('Jun', node_str) ~ '6',
+        grepl('Jul', node_str) ~ '7',
+        grepl('Aug', node_str) ~ '8',
+        grepl('Sep', node_str) ~ '9',
+        grepl('Oct', node_str) ~ '10',
+        grepl('Nov', node_str) ~ '11',
+        grepl('Dec', node_str) ~ '12',
+        T ~ '0'
+      )
+      
+      # Split up string
+      node_split <- case_when(
+        grepl("Jan", node_str) ~ str_split(node_str, 'Jan'),
+        grepl('Feb', node_str) ~ str_split(node_str, 'Feb'),
+        grepl('Mar', node_str) ~ str_split(node_str, 'Mar'),
+        grepl("Apr", node_str) ~ str_split(node_str, 'Apr'),
+        grepl('May', node_str) ~ str_split(node_str, 'May'),
+        grepl('Jun', node_str) ~ str_split(node_str, 'Jun'),
+        grepl('Jul', node_str) ~ str_split(node_str, 'Jul'),
+        grepl('Aug', node_str) ~ str_split(node_str, 'Aug'),
+        grepl('Sep', node_str) ~ str_split(node_str, 'Sep'),
+        grepl('Oct', node_str) ~ str_split(node_str, 'Oct'),
+        grepl('Nov', node_str) ~ str_split(node_str, 'Nov'),
+        T ~ str_split(node_str, 'Dec')
+      )
+      
+      # Unlist
+      node_split <- unlist(node_split)
+      
+      # Extract meet name
+      race_name <- str_trim(node_split[1])
+      
+      # Get day (take first day if it's a two day meet)
+      race_day <- case_when(
+        substr(str_trim(node_split[2]), 2, 2) == '-' ~ substr(str_trim(node_split[2]), 1, 1),
+        T ~ substr(str_trim(node_split[2]), 1, 2)
+      )
+      
+      # Create date using day/mo/yr
+      temp_race_date <- paste0(year, '-', temp_mo, '-', race_day)
+      
       # Create a flag for XC
       xc_flag <- case_when(
         grepl("xc|cross country", tolower(node_str)) ~ TRUE,
         T ~ FALSE
       )
+      
       # Now we extract results
       for (j in (i+1):length(keep_nodes))
       {
@@ -153,34 +228,65 @@ runnerScrape = function(url){
           # If so, break out
           break
         }
+        # Check if a prelim
+        is_prelim <- case_when(
+          grepl("\\(P\\)", keep_nodes[j]) ~ TRUE,
+          T ~ FALSE
+        )
         # Split the next string into event, time and place
         result_split <- unlist(str_split(keep_nodes[j], " "))
-        # Indicate if result is XC or not
-        event <- case_when(
-          xc_flag ~ paste0(result_split[1], " XC"),
-          T ~ result_split[1]
-        )
-        # Get place (need code to handle sprinters)
-        place <- case_when(
-          length(result_split) == 5 ~ result_split[4],
-          T ~ result_split[3]
-        )
+        # Check to see if event is field event
+        if(result_split[1] %in% c("HJ","LJ","TJ","PV","SP","DT","HT","JT","Hep","Dec"))
+        {
+          event <- result_split[1]
+          place <- NA
+          time <- NA
+        } else {
+          # Indicate if result is XC or not
+          event <- case_when(
+            xc_flag ~ paste0(result_split[1], " XC"),
+            T ~ result_split[1]
+          )
+          # Get place (need code to handle sprinters)
+          place <- case_when(
+            length(result_split) == 5 ~ result_split[4],
+            T ~ result_split[3]
+          )
+          # Get time
+          time <- result_split[2]
+        }
         # Get the pieces
         years <- append(years, year)
         events <- append(events, event)
-        times <- append(times, result_split[2])
+        times <- append(times, time)
         places <- append(places, place)
+        race_names <- append(race_names, race_name)
+        dates <- append(dates, temp_race_date)
+        prelims <- append(prelims, is_prelim)
       }
     }
   }
   
-  # Create a data frame
-  athlete <- as.data.frame(cbind(years, events, times, places))
-  names(athlete) = c("YEAR", "EVENT", "TIME", "PLACE")
+  # Check if vectors are null
+  if (is.null(years) | is.null(events) | is.null(times) | is.null(places) | is.null(race_names) | is.null(dates) | is.null(prelims)) {
+    # Print error message
+    print(paste0("Error getting data for: ", runner_name))
+    # Set to empty, default values
+    athlete <- as.data.frame(cbind("year", "event", 1.1, 1.1, "meet", "meet date", TRUE, "name", "gender", "team_name"))
+    # Rename columns
+    names(athlete) = c("YEAR", "EVENT", "TIME", "PLACE", "MEET_NAME", "MEET_DATE", "PRELIM", "NAME", "GENDER", "TEAM")
+  } else {
+    # Create a data frame
+    athlete <- as.data.frame(cbind(years, events, times, places, race_names, dates, prelims))
+    names(athlete) <- c("YEAR", "EVENT", "TIME", "PLACE", "MEET_NAME", "MEET_DATE", "PRELIM")
+  }
+  
+  # Remove results where athlete competed in field event
+  athlete <- athlete %>%
+    filter(!(EVENT %in% c("HJ","LJ","TJ","PV","SP","DT","HT","JT","Hep","Dec")))
 
   # Make sure athlete has rows (sprinters get removed)
-  if (nrow(athlete) > 0)
-  {
+  if ((nrow(athlete) > 0)) {
     # Clean up and group to one row per event
     athlete <- athlete %>%
       mutate(
@@ -207,17 +313,32 @@ runnerScrape = function(url){
         TIME = as.character(TIME)
         )
     
+    # Check to see if data was nullified
+    if (nrow(athlete) == 0) {
+      # Set to empty, default values
+      athlete <- as.data.frame(cbind("year", "event", 1.1, 1.1, "meet", "meet date", TRUE, "name", "gender", "team_name"))
+      # Rename columns
+      names(athlete) = c("YEAR", "EVENT", "TIME", "PLACE", "MEET_NAME", "MEET_DATE", "PRELIM", "NAME", "GENDER", "TEAM")
+      # Return
+      return(athlete)
+    } 
+    
     # Apply function to convert times to numbers
-    athlete$TIME = sapply(athlete$TIME, handleTimes)
-    athlete$NAME = runner_name
-    athlete$GENDER = gender
-    athlete$TEAM = team_name
-  }
-  # Handle when sprinters are included
-  else
-  {
-    athlete = as.data.frame(cbind("NULL", 0, 0, 0, 0, 0, 0, "NULL"))
-    names(athlete) = c("EVENT", "AVG_PLACE", "AVG_TIME", "PR", "WINS", "TIMES.RUN", "WIN_PCT", "NAME")
+    athlete$TIME <- sapply(athlete$TIME, handleTimes)
+    athlete$NAME <- runner_name
+    athlete$GENDER <- gender
+    athlete$TEAM <- team_name
+    
+  } else if (nrow(athlete) == 0){
+    # Set to empty, default values
+    athlete <- as.data.frame(cbind("year", "event", 1.1, 1.1, "meet", "meet date", TRUE, "name", "gender", "team_name"))
+    # Rename columns
+    names(athlete) = c("YEAR", "EVENT", "TIME", "PLACE", "MEET_NAME", "MEET_DATE", "PRELIM", "NAME", "GENDER", "TEAM")
+  } else {
+    # Set to empty, default values
+    athlete <- as.data.frame(cbind("year", "event", 1.1, 1.1, "meet", "meet date", TRUE, "name", "gender", "team_name"))
+    # Rename columns
+    names(athlete) = c("YEAR", "EVENT", "TIME", "PLACE", "MEET_NAME", "MEET_DATE", "PRELIM", "NAME", "GENDER", "TEAM")
   }
   
   return(athlete)
@@ -225,7 +346,27 @@ runnerScrape = function(url){
 
 groupedResults <- function(athleteDF){
   athlete <- athleteDF %>%
+    filter(PRELIM == FALSE & !is.na(TIME) & !is.na(PLACE)) %>%
     group_by(NAME, GENDER, TEAM, EVENT) %>%
+    summarise(
+      AVG_PLACE = round(mean(PLACE, na.rm = T), 2),
+      AVG_TIME = round(mean(TIME), 2),
+      PR = min(TIME),
+      WINS = n_distinct(TIME[PLACE == 1]),
+      TIMES.RUN = n()
+    ) %>%
+    mutate(
+      WIN_PCT = round(((WINS / TIMES.RUN) * 100), 2)
+    )
+  
+  # Return data
+  return(athlete)
+}
+
+groupedYearlyResults <- function(athleteDF){
+  athlete <- athleteDF %>%
+    filter(PRELIM == FALSE) %>%
+    group_by(NAME, GENDER, TEAM, EVENT, YEAR) %>%
     summarise(
       AVG_PLACE = round(mean(PLACE, na.rm = T), 2),
       AVG_TIME = round(mean(TIME), 2),
@@ -243,38 +384,42 @@ groupedResults <- function(athleteDF){
 
 ## resultsQuery Function
 # Create a function for results querying - takes in a list of webpage URLs from runnerScrape
-resultsQuery = function(wp){
-  # Create a temporary dataframe for runner line item performance
-  runner_lines = as.data.frame(cbind("year", "event", 1.1, 1.1, "name", "gender", "team_name"))
-  # Rename columns
-  names(runner_lines) = c("YEAR", "EVENT", "TIME", "PLACE", "NAME", "GENDER", "TEAM")
-  # Reformat var
-  runner_lines <- runner_lines %>%
-    mutate(
-      YEAR = as.character(YEAR),
-      EVENT = as.character(EVENT),
-      TIME = as.numeric(TIME),
-      PLACE = as.numeric(PLACE),
-      NAME = as.character(NAME),
-      GENDER = as.character(GENDER),
-      TEAM = as.character(TEAM)
-    )
-  
-  # Loop through every person from the results
-  for ( i in 1:length(wp) )
-  {
-    # Set url to scrape
-    url = wp[i]
-    
-    # Make a temporary df for the runner
-    runner_temp <- runnerScrape(url)
-    
-    # Append lines to dataframe
-    runner_lines <- rbind(runner_lines, runner_temp)
-  }
-  # Return data
-  return(runner_lines)
-}
+# resultsQuery = function(wp){
+#   # Create a temporary dataframe for runner line item performance
+#   runner_lines = as.data.frame(cbind("year", "event", 1.1, 1.1, "meet", "meet date", TRUE, "name", "gender", "team_name"))
+#   # Rename columns
+#   names(runner_lines) = c("YEAR", "EVENT", "TIME", "PLACE", "MEET_NAME", "MEET_DATE", "PRELIM", "NAME", "GENDER", "TEAM")
+#   # Reformat var
+#   runner_lines <- runner_lines %>%
+#     mutate(
+#       YEAR = as.character(YEAR),
+#       EVENT = as.character(EVENT),
+#       TIME = as.numeric(TIME),
+#       PLACE = as.numeric(PLACE),
+#       NAME = as.character(NAME),
+#       GENDER = as.character(GENDER),
+#       TEAM = as.character(TEAM)
+#     )
+# 
+#   # Loop through every person from the results
+#   for ( i in 1:length(wp) )
+#   {
+#     # Set url to scrape
+#     url = wp[i]
+# 
+#     # Print status marker
+#     print(paste0("Gettin data for runner ", i, " out of ", length(wp)))
+# 
+#     # Make a temporary df for the runner
+#     runner_temp <- runnerScrape(url)
+# 
+#     # Append lines to dataframe
+#     runner_lines <- rbind(runner_lines, runner_temp)
+#   }
+# 
+#   # Return data
+#   return(runner_lines)
+# }
 
 ## reformatRunners
 # Create function to convert times and transpose
@@ -377,6 +522,104 @@ reformatRunners = function(df){
   return(df)
 }
 
+reformatYearlyRunners = function(df){
+  df <- df %>%
+    mutate( # Create times that are readable for QC purposes
+      AVG_TIME_FORM = paste0(floor(as.numeric(AVG_TIME) / 60), ":", (str_pad(floor(as.numeric(AVG_TIME) %% 60), width = 2, side = "left", pad = "0")))
+    ) %>%
+    mutate(
+      PR_FORM = paste0(floor(as.numeric(PR) / 60), ":", (str_pad(floor(as.numeric(PR) %% 60), width = 2, side = "left", pad = "0")))
+    ) %>%
+    filter(!(EVENT %in% c("event", "OTHER"))) %>%
+    group_by(NAME, GENDER, TEAM, YEAR) %>%
+    summarise( # Transpose data frame
+      # 800m
+      AVG_PLACE_800 = min(AVG_PLACE[EVENT == '800m']),
+      AVG_TIME_800 = min(AVG_TIME[EVENT == '800m']),
+      PR_800 = min(PR[EVENT == '800m']),
+      WINS_800 = min(WINS[EVENT == '800m']),
+      TIMES_RUN_800 = min(TIMES.RUN[EVENT == '800m']),
+      WIN_PCT_800 = min(WIN_PCT[EVENT == '800m']),
+      AVG_TIME_FORM_800 = min(AVG_TIME_FORM[EVENT == '800m']),
+      PR_FORM_800 = min(PR_FORM[EVENT == '800m']),
+      # 1500m
+      AVG_PLACE_1500 = min(AVG_PLACE[EVENT == '1500m']),
+      AVG_TIME_1500 = min(AVG_TIME[EVENT == '1500m']),
+      PR_1500 = min(PR[EVENT == '1500m']),
+      WINS_1500 = min(WINS[EVENT == '1500m']),
+      TIMES_RUN_1500 = min(TIMES.RUN[EVENT == '1500m']),
+      WIN_PCT_1500 = min(WIN_PCT[EVENT == '1500m']),
+      AVG_TIME_FORM_1500 = min(AVG_TIME_FORM[EVENT == '1500m']),
+      PR_FORM_1500 = min(PR_FORM[EVENT == '1500m']),
+      # Mile
+      AVG_PLACE_MILE = min(AVG_PLACE[EVENT == 'Mile']),
+      AVG_TIME_MILE = min(AVG_TIME[EVENT == 'Mile']),
+      PR_MILE = min(PR[EVENT == 'Mile']),
+      WINS_MILE = min(WINS[EVENT == 'Mile']),
+      TIMES_RUN_MILE = min(TIMES.RUN[EVENT == 'Mile']),
+      WIN_PCT_MILE = min(WIN_PCT[EVENT == 'Mile']),
+      AVG_TIME_FORM_MILE = min(AVG_TIME_FORM[EVENT == 'Mile']),
+      PR_FORM_MILE = min(PR_FORM[EVENT == 'Mile']),
+      # 3000m
+      AVG_PLACE_3000 = min(AVG_PLACE[EVENT == '3000m']),
+      AVG_TIME_3000 = min(AVG_TIME[EVENT == '3000m']),
+      PR_3000 = min(PR[EVENT == '3000m']),
+      WINS_3000 = min(WINS[EVENT == '3000m']),
+      TIMES_RUN_3000 = min(TIMES.RUN[EVENT == '3000m']),
+      WIN_PCT_3000 = min(WIN_PCT[EVENT == '3000m']),
+      AVG_TIME_FORM_3000 = min(AVG_TIME_FORM[EVENT == '3000m']),
+      PR_FORM_3000 = min(PR_FORM[EVENT == '3000m']),
+      # 3000mSC
+      AVG_PLACE_3000S = min(AVG_PLACE[EVENT == '3000S']),
+      AVG_TIME_3000S = min(AVG_TIME[EVENT == '3000S']),
+      PR_3000S = min(PR[EVENT == '3000S']),
+      WINS_3000S = min(WINS[EVENT == '3000S']),
+      TIMES_RUN_3000S = min(TIMES.RUN[EVENT == '3000S']),
+      WIN_PCT_3000S = min(WIN_PCT[EVENT == '3000S']),
+      AVG_TIME_FORM_3000S = min(AVG_TIME_FORM[EVENT == '3000S']),
+      PR_FORM_3000S = min(PR_FORM[EVENT == '3000S']),
+      # 5000m
+      AVG_PLACE_5000 = min(AVG_PLACE[EVENT == '5000m']),
+      AVG_TIME_5000 = min(AVG_TIME[EVENT == '5000m']),
+      PR_5000 = min(PR[EVENT == '5000m']),
+      WINS_5000 = min(WINS[EVENT == '5000m']),
+      TIMES_RUN_5000 = min(TIMES.RUN[EVENT == '5000m']),
+      WIN_PCT_5000 = min(WIN_PCT[EVENT == '5000m']),
+      AVG_TIME_FORM_5000 = min(AVG_TIME_FORM[EVENT == '5000m']),
+      PR_FORM_5000 = min(PR_FORM[EVENT == '5000m']),
+      # 6K XC
+      AVG_PLACE_6KXC = min(AVG_PLACE[EVENT == '6K XC']),
+      AVG_TIME_6KXC = min(AVG_TIME[EVENT == '6K XC']),
+      PR_6KXC = min(PR[EVENT == '6K XC']),
+      WINS_6KXC = min(WINS[EVENT == '6K XC']),
+      TIMES_RUN_6KXC = min(TIMES.RUN[EVENT == '6K XC']),
+      WIN_PCT_6KXC = min(WIN_PCT[EVENT == '6K XC']),
+      AVG_TIME_FORM_6KXC = min(AVG_TIME_FORM[EVENT == '6K XC']),
+      PR_FORM_6KXC = min(PR_FORM[EVENT == '6K XC']),
+      # 8K XC
+      AVG_PLACE_8KXC = min(AVG_PLACE[EVENT == '8K XC']),
+      AVG_TIME_8KXC = min(AVG_TIME[EVENT == '8K XC']),
+      PR_8KXC = min(PR[EVENT == '8K XC']),
+      WINS_8KXC = min(WINS[EVENT == '8K XC']),
+      TIMES_RUN_8KXC = min(TIMES.RUN[EVENT == '8K XC']),
+      WIN_PCT_8KXC = min(WIN_PCT[EVENT == '8K XC']),
+      AVG_TIME_FORM_8KXC = min(AVG_TIME_FORM[EVENT == '8K XC']),
+      PR_FORM_8KXC = min(PR_FORM[EVENT == '8K XC']),
+      # 10K
+      AVG_PLACE_10K = min(AVG_PLACE[EVENT == '10K']),
+      AVG_TIME_10K = min(AVG_TIME[EVENT == '10K']),
+      PR_10K = min(PR[EVENT == '10K']),
+      WINS_10K = min(WINS[EVENT == '10K']),
+      TIMES_RUN_10K = min(TIMES.RUN[EVENT == '10K']),
+      WIN_PCT_10K = min(WIN_PCT[EVENT == '10K']),
+      AVG_TIME_FORM_10K = min(AVG_TIME_FORM[EVENT == '10K']),
+      PR_FORM_10K = min(PR_FORM[EVENT == '10K']),
+    ) %>%
+    mutate_if(is.numeric, list(~na_if(., Inf))) # Replace Inf values created by runners not competing in an event
+  
+  # Return data frame
+  return(df)
+}
 
 # Functions to get data for URL
 # Meet results

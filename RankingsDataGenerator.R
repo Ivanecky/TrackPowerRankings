@@ -17,17 +17,7 @@ library(rvest)
 source("Scraping_Fxns.R")
 
 # Read connection data from yaml
-yml <- read_yaml("postgres.yaml")
 aws.yml <- read_yaml("aws.yaml")
-
-# Connect to database
-pg <- dbConnect(
-  RPostgres::Postgres(),
-  db = yml$database,
-  host = yml$host,
-  user = yml$user,
-  port = yml$port
-)
 
 # Connect to database
 aws <- dbConnect(
@@ -96,9 +86,7 @@ readPerfListIndoor <- function(url){
   if(ncol(results) == 8)
   {
     names(results) <- c("PLACE", "ATHLETE", "YEAR", "TEAM", "TIME", "MEET", "MEET.DATE", "WIND")
-  }
-  else
-  {
+  } else {
     names(results) <- c("PLACE", "ATHLETE", "YEAR", "TEAM", "TIME", "MEET", "MEET.DATE") 
   }
   
@@ -122,14 +110,12 @@ readPerfListIndoor <- function(url){
       if ( i %% 2 == 0 ) 
       { 
         temp$Gender = "F" 
-      }
-      else { temp$Gender = "M" }
+      } else { 
+        temp$Gender = "M" 
+        }
       
       results = rbind(results, temp) 
-    }
-    # Make sure table has 7 columns for binding - some tables using conversions for field events have 8 columns
-    else if ( ncol(temp) == 7 )
-    { 
+    } else if ( ncol(temp) == 7 ) { 
       # Rename and bind
       names(temp) = c("PLACE", "ATHLETE", "YEAR", "TEAM", "TIME", "MEET", "MEET.DATE")
       
@@ -137,13 +123,12 @@ readPerfListIndoor <- function(url){
       if ( i %% 2 == 0 ) 
       { 
         temp$Gender = "F" 
+      } else { 
+        temp$Gender = "M" 
       }
-      else { temp$Gender = "M" }
       
       results = rbind(results, temp) 
-    }
-    else if( ncol(temp) == 6)
-    {
+    } else if( ncol(temp) == 6) {
       relays = rbind(relays, temp)
     }
   }
@@ -204,6 +189,7 @@ readPerfListIndoor <- function(url){
     mutate(
       TIME = gsub("#", "", TIME)
     ) %>%
+    filter(!grepl(":", TIME)) %>%
     mutate(
       timeInSec = as.numeric(TIME)
     )
@@ -376,7 +362,7 @@ readPerfListOutdoor <- function(url){
       # Women
       (grepl('48\\.|49\\.|50\\.|51\\.|52\\.|53\\.|54\\.|55\\.|56\\.|57\\.|58\\.|59\\.', TIME) & 
         (substr(TIME,1,2) %in% c('48','49','50','51','52','53','54','55','56','57','58','59'))) |
-        (Gender == 'F' & grepl('1:', TIME))~ '400m',
+        (Gender == 'F' & grepl('1:0', TIME))~ '400m',
       grepl('1:5|2:', TIME) & (substr(TIME,1,2) == '2:' | substr(TIME,1,3) == '1:5') & Gender == 'F' ~ '800m',
       grepl('3:|4:|5:', TIME) & (substr(TIME,1,2) %in% c('3:','4:','5:')) ~ '1500m',
       grepl('7:|8:|9:|10:|11:|12:', TIME) & (substr(TIME,1,2) %in% c('7:', '8:', '9:', '10', '11', '12')) ~ 'Steeplechase',
@@ -394,6 +380,9 @@ readPerfListOutdoor <- function(url){
     ) %>%
     mutate(
       TIME = gsub("#", "", TIME)
+    ) %>%
+    mutate(
+      TIME = gsub("\\(.*", "", TIME)
     )
   
   # Convert time to seconds
@@ -428,6 +417,10 @@ readPerfListOutdoor <- function(url){
     mutate(
       TIME = gsub("#", "", TIME)
     ) %>%
+    mutate(
+      TIME = gsub("\\(.*", "", TIME)
+    ) %>%
+    filter(!grepl(":", TIME)) %>%
     mutate(
       timeInSec = as.numeric(TIME)
     )
@@ -492,8 +485,8 @@ readPerfListOutdoor <- function(url){
     mutate(
       weightedScore = case_when(
         eventNum == 1 ~ totalScore,
-        eventNum == 2 ~ 0.85 * totalScore,
-        eventNum == 3 ~ 0.7 * totalScore,
+        eventNum == 2 ~ 0.8 * totalScore,
+        eventNum == 3 ~ 0.6 * totalScore,
         T ~ totalScore
       )
     )
@@ -510,7 +503,7 @@ readPerfListOutdoor <- function(url){
     ) %>%
     mutate(PTS_PER_EVENT = POINTS / EVENTS) %>%
     mutate(
-      OVERALL_RANK = (0.3*POINTS) + (0.7*PTS_PER_EVENT)
+      OVERALL_RANK = (0.375*POINTS) + (0.625*PTS_PER_EVENT)
     ) %>%
     arrange(-OVERALL_RANK)
   
@@ -591,7 +584,7 @@ df1 <- df1 %>%
   mutate(
     EVENT_YEAR = '2021',
     DVISION = 'D1',
-    LOAD_DATE = lubridate::today()
+    LOAD_DATE = lubridate::today() + 2
   )
 
 df2 <- createRankingsOutdoor(outdoorD221)
@@ -600,7 +593,7 @@ df2 <- df2 %>%
   mutate(
     EVENT_YEAR = '2021',
     DVISION = 'D2',
-    LOAD_DATE = lubridate::today()
+    LOAD_DATE = lubridate::today() + 2
   )
 
 df3 <- createRankingsOutdoor(outdoorD321)
@@ -609,7 +602,7 @@ df3 <- df3 %>%
   mutate(
     EVENT_YEAR = '2021',
     DVISION = 'D3',
-    LOAD_DATE = lubridate::today()
+    LOAD_DATE = lubridate::today() + 2
   )
 
 # Bind data
@@ -670,7 +663,7 @@ teams <- rbind(teamD1, teamD2, teamD3)
 # Create a load date
 teams <- teams %>%
   mutate(
-    load_date = lubridate::today()
+    load_date = lubridate::today() + 2
   )
 
 # Write data to table

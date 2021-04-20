@@ -1,0 +1,87 @@
+---
+title: "EDA"
+author: "Samuel Ivanecky"
+date: "4/9/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidymodels)
+library(httr)
+library(dplyr)
+library(jsonlite)
+library(RPostgreSQL)
+library(DBI)
+library(RSQLite)
+library(reshape2)
+library(stringr)
+library(yaml)
+library(rvest)
+library(ggthemes)
+library(plotly)
+
+# Load functions for scraping
+source("Scraping_Fxns.R")
+
+# Connect to AWS & Postgres
+# Read connection data from yaml
+aws.yml <- read_yaml("aws.yaml")
+
+# Connect to database
+aws <- dbConnect(
+  RPostgres::Postgres(),
+  host = aws.yml$host,
+  user = aws.yml$user,
+  password = aws.yml$password,
+  port = aws.yml$port
+)
+```
+
+# Query Data
+```{r}
+# Query lines
+lines <- dbGetQuery(aws, 'select distinct * from performance_lines')
+runners_grp <- dbGetQuery(aws, 'select distinct * from runners_grouped')
+runners_yrly <- dbGetQuery(aws, 'select distinct * from runners_grouped_yearly')
+```
+
+# Exploratory Analysis
+## Get Runners from NCAA 2021 Indoor Champs
+```{r}
+ncaa_runners <- lines %>%
+  filter((MEET_NAME == 'NCAA Division I Indoor Track & Field Championships') & PRELIM == FALSE & YEAR == '2021' & EVENT %in% c("800m", "Mile", "3000m", "5000m")) 
+         #| MEET_NAME == 'NCAA Division II Indoor Track & Field Championships') & PRELIM == FALSE & YEAR == '2021')
+
+ncaa_sub <- runners_grouped_yr %>%
+  filter(NAME %in% ncaa_runners$NAME)
+
+ncaa_runners <- ncaa_runners %>%
+  left_join(ncaa_sub, by = c("NAME", "EVENT", "YEAR", "TEAM", "GENDER"))
+
+ncaa_ly <- runners_yrly %>%
+  filter(NAME %in% ncaa_runners$NAME) %>%
+  group_by(NAME, EVENT) %>%
+  arrange(YEAR, .by_group = TRUE) %>%
+  mutate(
+    JOIN_YR = lead(YEAR)
+  )
+
+ncaa_runners <- ncaa_runners %>%
+  left_join(ncaa_ly, by = c("NAME", "EVENT", "TEAM", "GENDER", "YEAR" = "JOIN_YR"))
+```
+
+```{r}
+event_sub <- ncaa_runners %>%
+  filter(GENDER == 'M' & EVENT == '5000m')
+
+ggplot(ncaa_runners, aes(PLACE, PR, colour = EVENT)) +
+  geom_point(size = 3) +
+  labs(x = "NCAA Indoor Finish (2021)", y = "Average Finish During Season (2021)") +
+  theme_fivethirtyeight() +
+  ggtitle("How Does Prior-Season Performance Predict NCAA Finish?", subtitle = "Comparing the NCAA finish vs a runner's average finish in the event during the previous season.") +
+  theme(text = element_text(size = 30)) + 
+  facet_wrap(EVENT ~ ., scales = 'free')
+```
+
+
