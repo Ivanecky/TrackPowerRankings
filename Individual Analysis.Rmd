@@ -9,7 +9,6 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 library(tidymodels)
 library(httr)
-library(dplyr)
 library(jsonlite)
 library(RPostgreSQL)
 library(DBI)
@@ -20,6 +19,7 @@ library(yaml)
 library(rvest)
 library(ggthemes)
 library(plotly)
+library(dplyr)
 
 # Load functions for scraping
 source("Scraping_Fxns.R")
@@ -46,42 +46,325 @@ runners_grp <- dbGetQuery(aws, 'select distinct * from runners_grouped')
 runners_yrly <- dbGetQuery(aws, 'select distinct * from runners_grouped_yearly')
 ```
 
-# Exploratory Analysis
-## Get Runners from NCAA 2021 Indoor Champs
+# Format Data
 ```{r}
-ncaa_runners <- lines %>%
-  filter((MEET_NAME == 'NCAA Division I Indoor Track & Field Championships') & PRELIM == FALSE & YEAR == '2021' & EVENT %in% c("800m", "Mile", "3000m", "5000m")) 
-         #| MEET_NAME == 'NCAA Division II Indoor Track & Field Championships') & PRELIM == FALSE & YEAR == '2021')
+lines <- lines %>%
+  filter(!(YEAR %in% c('year', 'OTHER'))) %>%
+  mutate(
+    MEET_DATE = lubridate::ymd(MEET_DATE)
+  )
 
-ncaa_sub <- runners_grouped_yr %>%
-  filter(NAME %in% ncaa_runners$NAME)
+runners_grp <- runners_grp %>%
+  filter(NAME != 'name')
 
-ncaa_runners <- ncaa_runners %>%
-  left_join(ncaa_sub, by = c("NAME", "EVENT", "YEAR", "TEAM", "GENDER"))
+runners_yrly <- runners_yrly %>%
+  filter(YEAR != 'year')
+```
 
+# Data Classification
+## Identify NCAA Meets
+```{r}
+ncaa_championships <- lines %>%
+  filter(grepl("ncaa", tolower(MEET_NAME)) & grepl("championship|meet", tolower(MEET_NAME)) & 
+           !grepl("qualifier|qualifying|cross country|region|pre-national", tolower(MEET_NAME)))
+```
+
+## Join Current Year & Previous Year Marks
+```{r}
+# Get previous year data
 ncaa_ly <- runners_yrly %>%
-  filter(NAME %in% ncaa_runners$NAME) %>%
+  filter(NAME %in% ncaa_championships$NAME) %>%
   group_by(NAME, EVENT) %>%
   arrange(YEAR, .by_group = TRUE) %>%
   mutate(
     JOIN_YR = lead(YEAR)
   )
 
+# Get current year data
+ncaa_cy <- runners_yrly %>%
+  filter(NAME %in% ncaa_championships$NAME)
+
+# Rename data
+names(ncaa_ly) <- paste0(names(ncaa_ly), "_LY")
+names(ncaa_cy) <- paste0(names(ncaa_cy), "_CY")
+
+# Join data
+ncaa_runners <- ncaa_championships %>%
+  left_join(ncaa_ly, by = c("YEAR" = "JOIN_YR_LY", "NAME" = "NAME_LY", "EVENT" = "EVENT_LY")) %>%
+  left_join(ncaa_cy, by = c("YEAR" = "YEAR_CY", "NAME" = "NAME_CY", "EVENT" = "EVENT_CY"))
+
+# Remove duplicated columns
+drop_cols <- c("GENDER_LY", "TEAM_LY", "GENDER_CY", "TEAM_CY")
+
+# Drop columns, filter out prelims
 ncaa_runners <- ncaa_runners %>%
-  left_join(ncaa_ly, by = c("NAME", "EVENT", "TEAM", "GENDER", "YEAR" = "JOIN_YR"))
+  select(-drop_cols) %>%
+  filter(PRELIM == FALSE)
+
+# Filter out outlier places
+ncaa_runners <- ncaa_runners %>%
+  filter(PLACE <= 25 & EVENT != '6K XC' & !grepl("central", tolower(MEET_NAME))) %>%
+  filter(!is.na(YEAR_LY))
+
+# Get event averages by gender
+avgs <- ncaa_runners %>%
+  group_by(GENDER, EVENT) %>%
+  summarise(
+    avg_time = mean(PR_LY, na.rm = TRUE)
+  )
+
+# Join avgs
+ncaa_runners <- ncaa_runners %>%
+  left_join(avgs, by = c("GENDER", "EVENT"))
+
+# Flag events outside certain range
+ncaa_runners <- ncaa_runners %>%
+  mutate(
+    FLAG = case_when(
+      PR_LY < (avg_time - (0.2*avg_time)) ~ 'Y',
+      PR_LY > (avg_time + (0.2*avg_time)) ~ 'Y',
+      EVENT == 'Mile' & PLACE > 10 ~ 'Y',
+      TEAM %in% c("UNITED STATES", "JAMAICA") ~ 'Y',
+      NAME == 'BRITTANY KOZLOWSKI' ~ 'Y',
+      T ~ 'N'
+    )
+  ) %>%
+  filter(FLAG == 'N')
 ```
 
+# Exploratory Analysis
+### Plot vs Last Year PR
 ```{r}
-event_sub <- ncaa_runners %>%
-  filter(GENDER == 'M' & EVENT == '5000m')
-
-ggplot(ncaa_runners, aes(PLACE, PR, colour = EVENT)) +
+ggplot(ncaa_runners, aes(PLACE, PR_LY, colour = GENDER)) +
   geom_point(size = 3) +
-  labs(x = "NCAA Indoor Finish (2021)", y = "Average Finish During Season (2021)") +
   theme_fivethirtyeight() +
-  ggtitle("How Does Prior-Season Performance Predict NCAA Finish?", subtitle = "Comparing the NCAA finish vs a runner's average finish in the event during the previous season.") +
-  theme(text = element_text(size = 30)) + 
-  facet_wrap(EVENT ~ ., scales = 'free')
+  ggtitle("How Does Prior-Season Performance Predict NCAA Finish?", 
+          subtitle = "Comparing the NCAA finish (X) vs a runner's personal best in the event during the previous season (Y).") +
+  theme(text = element_text(size = 60)) + 
+  facet_wrap(EVENT ~ ., scales = 'free') +
+  stat_smooth(method = 'lm') +
+  theme_fivethirtyeight() +
+  scale_color_fivethirtyeight()
+```
+
+### Plot vs This Year PR
+```{r}
+ggplot(ncaa_runners, aes(PLACE, PR_CY, colour = GENDER)) +
+  geom_point(size = 3) +
+  theme_fivethirtyeight() +
+  ggtitle("How Does Current-Season Performance Predict NCAA Finish?", 
+          subtitle = "Comparing the NCAA finish (X) vs a runner's personal best in the event during the current season (Y).") +
+  theme(text = element_text(size = 60)) + 
+  facet_wrap(EVENT ~ ., scales = 'free') +
+  stat_smooth(method = 'lm') +
+  theme_fivethirtyeight() +
+  scale_color_fivethirtyeight()
+```
+
+## Distributions for Variables
+```{r}
+ggplot(ncaa_runners, aes(AVG_PLACE)) +
+  geom_histogram(fill = 'lightblue', color = 'blue')
+
+ggplot(ncaa_runners, aes(WIN_PCT)) +
+  geom_histogram(fill = 'lightblue', color = 'blue')
+
+ggplot(ncaa_runners, aes(PR)) +
+  geom_histogram(fill = 'lightblue', color = 'blue')
+```
+
+## Correlations
+```{r}
+# Correlation tests
+# Subset men & women
+men <- ncaa_runners %>% filter(GENDER == 'M')
+women <- ncaa_runners %>% filter(GENDER == 'F')
+
+# Get levels
+events <- levels(as.factor(ncaa_runners$EVENT))
+
+# Vectors
+event <- c()
+cors <- c()
+genders <- c()
+cy_ly <- c()
+p_vals <- c()
+
+# Create correlation values
+for (i in 1:length(events)) {
+  # Subset data
+  temp_men <- men %>% filter(EVENT == events[i])
+  temp_women <- women %>% filter(EVENT == events[i])
+  
+  # Test correlations
+  men_cor_ly <- cor.test(temp_men$PLACE, temp_men$PR_LY)
+  women_cor_ly <- cor.test(temp_women$PLACE, temp_women$PR_LY)
+  men_cor_cy <- cor.test(temp_men$PLACE, temp_men$PR_CY)
+  women_cor_cy <- cor.test(temp_women$PLACE, temp_women$PR_CY)
+  
+  # Append to vectors
+  event <- append(event, events[i])
+  cors <- append(cors, men_cor_ly$estimate)
+  genders <- append(genders, "M")
+  cy_ly <- append(cy_ly, "LY")
+  p_vals <- append(p_vals, men_cor_ly$p.value)
+  
+  event <- append(event, events[i])
+  cors <- append(cors, men_cor_cy$estimate)
+  genders <- append(genders, "M")
+  cy_ly <- append(cy_ly, "CY")
+  p_vals <- append(p_vals, men_cor_cy$p.value)
+  
+  event <- append(event, events[i])
+  cors <- append(cors, women_cor_ly$estimate)
+  genders <- append(genders, "F")
+  cy_ly <- append(cy_ly, "LY")
+  p_vals <- append(p_vals, women_cor_ly$p.value)
+  
+  event <- append(event, events[i])
+  cors <- append(cors, women_cor_cy$estimate)
+  genders <- append(genders, "F")
+  cy_ly <- append(cy_ly, "CY")
+  p_vals <- append(p_vals, women_cor_cy$p.value)
+}
+
+# Bind all of the data together
+cor_df <- as.data.frame(cbind(event, genders, cy_ly, cors, p_vals))
+
+# Fix types
+cor_df <- cor_df %>%
+  mutate(
+    cors = as.numeric(cors),
+    p_vals = as.numeric(p_vals)
+  )
+
+# Rename
+names(cor_df) <- c("Events", "Gender", "CY-LY", "Correlations", "P.Vals")
+```
+
+### Plot Correlations
+```{r}
+ggplot(cor_df, aes(Events, Correlations, fill = `CY-LY`)) +
+  geom_bar(stat = 'identity', position = 'dodge') +
+  facet_grid(Gender ~ .) +
+  theme_fivethirtyeight() +
+  scale_fill_fivethirtyeight() +
+  ggtitle("Correlations Between NCAA Finish & Personal Best from Current/Prior Seasons",
+          subtitle = "Taller bars indicate stronger correlations. CY = current season. LY = prior season.")
+```
+
+# Look at Only Top 10
+## Subset Data
+```{r}
+top10 <- ncaa_runners %>%
+  filter(PLACE <= 10)
+```
+
+## Recreate Plots
+```{r}
+# Last year
+ggplot(top10, aes(PLACE, PR_LY, colour = GENDER)) +
+  geom_point(size = 3) +
+  theme_fivethirtyeight() +
+  ggtitle("How Does Prior-Season Performance Predict NCAA Finish?", 
+          subtitle = "Comparing the NCAA finish (X) vs a runner's personal best in the event during the previous season (Y).") +
+  theme(text = element_text(size = 60)) + 
+  facet_wrap(EVENT ~ ., scales = 'free') +
+  stat_smooth(method = 'lm') +
+  theme_fivethirtyeight() +
+  scale_color_fivethirtyeight()
+
+# This year
+ggplot(top10, aes(PLACE, PR_CY, colour = GENDER)) +
+  geom_point(size = 3) +
+  theme_fivethirtyeight() +
+  ggtitle("How Does Current-Season Performance Predict NCAA Finish?", 
+          subtitle = "Comparing the NCAA finish (X) vs a runner's personal best in the event during the current season (Y).") +
+  theme(text = element_text(size = 60)) + 
+  facet_wrap(EVENT ~ ., scales = 'free') +
+  stat_smooth(method = 'lm') +
+  theme_fivethirtyeight() +
+  scale_color_fivethirtyeight()
+```
+
+## Correlations for Top 10
+```{r}
+# Correlation tests
+# Subset men & women
+men <- top10 %>% filter(GENDER == 'M')
+women <- top10 %>% filter(GENDER == 'F')
+
+# Get levels
+events <- levels(as.factor(top10$EVENT))
+
+# Vectors
+event <- c()
+cors <- c()
+genders <- c()
+cy_ly <- c()
+p_vals <- c()
+
+# Create correlation values
+for (i in 1:length(events)) {
+  # Subset data
+  temp_men <- men %>% filter(EVENT == events[i])
+  temp_women <- women %>% filter(EVENT == events[i])
+  
+  # Test correlations
+  men_cor_ly <- cor.test(temp_men$PLACE, temp_men$PR_LY)
+  women_cor_ly <- cor.test(temp_women$PLACE, temp_women$PR_LY)
+  men_cor_cy <- cor.test(temp_men$PLACE, temp_men$PR_CY)
+  women_cor_cy <- cor.test(temp_women$PLACE, temp_women$PR_CY)
+  
+  # Append to vectors
+  event <- append(event, events[i])
+  cors <- append(cors, men_cor_ly$estimate)
+  genders <- append(genders, "M")
+  cy_ly <- append(cy_ly, "LY")
+  p_vals <- append(p_vals, men_cor_ly$p.value)
+  
+  event <- append(event, events[i])
+  cors <- append(cors, men_cor_cy$estimate)
+  genders <- append(genders, "M")
+  cy_ly <- append(cy_ly, "CY")
+  p_vals <- append(p_vals, men_cor_cy$p.value)
+  
+  event <- append(event, events[i])
+  cors <- append(cors, women_cor_ly$estimate)
+  genders <- append(genders, "F")
+  cy_ly <- append(cy_ly, "LY")
+  p_vals <- append(p_vals, women_cor_ly$p.value)
+  
+  event <- append(event, events[i])
+  cors <- append(cors, women_cor_cy$estimate)
+  genders <- append(genders, "F")
+  cy_ly <- append(cy_ly, "CY")
+  p_vals <- append(p_vals, women_cor_cy$p.value)
+}
+
+# Bind all of the data together
+cor_df_10 <- as.data.frame(cbind(event, genders, cy_ly, cors, p_vals))
+
+# Fix types
+cor_df_10 <- cor_df_10 %>%
+  mutate(
+    cors = as.numeric(cors),
+    p_vals = as.numeric(p_vals)
+  )
+
+# Rename
+names(cor_df_10) <- c("Events", "Gender", "CY-LY", "Correlations", "P.Vals")
+```
+
+### Correlations Plot
+```{r}
+ggplot(cor_df_10, aes(Events, Correlations, fill = `CY-LY`)) +
+  geom_bar(stat = 'identity', position = 'dodge') +
+  facet_grid(Gender ~ .) +
+  theme_fivethirtyeight() +
+  scale_fill_fivethirtyeight() +
+  ggtitle("Correlations Between NCAA Finish & Personal Best from Current/Prior Seasons",
+          subtitle = "Taller bars indicate stronger correlations. CY = current season. LY = prior season.")
 ```
 
 

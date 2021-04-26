@@ -1,0 +1,214 @@
+---
+title: "Standard Shifts"
+author: "Samuel Ivanecky"
+date: "4/3/2021"
+output: html_document
+---
+
+# Setup
+```{r setup, include=FALSE}
+library(tidymodels)
+library(httr)
+library(dplyr)
+library(jsonlite)
+library(RPostgreSQL)
+library(DBI)
+library(RSQLite)
+library(reshape2)
+library(stringr)
+library(yaml)
+library(rvest)
+
+# Load functions for scraping
+source("Scraping_Fxns.R")
+
+# Connect to AWS & Postgres
+# Read connection data from yaml
+yml <- read_yaml("postgres.yaml")
+aws.yml <- read_yaml("aws.yaml")
+```
+
+# Outdoor URLs
+```{r}
+east19 <- "https://www.tfrrs.org/archived_lists/2569/2019_NCAA_Div._I_East_Outdoor_Qualifying_(FINAL)/2019/o"
+west19 <- "https://www.tfrrs.org/archived_lists/2570/2019_NCAA_Div._I_West_Outdoor_Qualifying_(FINAL)/2019/o"
+
+east18 <- "https://www.tfrrs.org/archived_lists/2280/2018_NCAA_Div._I_East_Outdoor_Qualifying_(FINAL)/2018/o"
+west18 <- "https://www.tfrrs.org/archived_lists/2281/2018_NCAA_Div._I_West_Outdoor_Qualifying_(FINAL)/2018/o"
+
+east17 <- "https://www.tfrrs.org/archived_lists/1925/2017_NCAA_Div._I_East_Outdoor_Qualifying_(FINAL)/2017/o"
+west17 <- "https://www.tfrrs.org/archived_lists/1926/2017_NCAA_Div._I_West_Outdoor_Qualifying_(FINAL)/2017/o"
+
+east16 <- "https://www.tfrrs.org/archived_lists/1687/2016_NCAA_Div._I_East_Outdoor_Qualifying_(FINAL)/2016/o"
+west16 <- "https://www.tfrrs.org/archived_lists/1686/2016_NCAA_Div._I_West_Outdoor_Qualifying_(FINAL)/2016/o"
+
+east15 <- "https://www.tfrrs.org/archived_lists/1440/2015_NCAA_Div._I_East_Outdoor_Qualifying_(FINAL)/2015/o"
+west15 <- "https://www.tfrrs.org/archived_lists/1441/2015_NCAA_Div._I_West_Outdoor_Qualifying_(FINAL)/2015/o"
+
+east14 <- "https://www.tfrrs.org/archived_lists/1229/2014_NCAA_Div._I_East_Outdoor_Qualifying_(FINAL)/2014/o"
+west14 <- "https://www.tfrrs.org/archived_lists/1230/2014_NCAA_Div._I_West_Outdoor_Qualifying_(FINAL)/2014/o"
+
+east13 <- "https://www.tfrrs.org/archived_lists/1030/2013_NCAA_Div._I_East_Outdoor_Qualifying_(FINAL)/2013/o"
+west13 <- "https://www.tfrrs.org/archived_lists/1031/2013_NCAA_Div._I_West_Outdoor_Qualifying_(FINAL)/2013/o"
+
+east12 <- "https://www.tfrrs.org/archived_lists/843/2012_NCAA_Div._I_East_Qualifiers_(Final)/2012/o"
+west12 <- "https://www.tfrrs.org/archived_lists/844/2012_NCAA_Div._I_West_Qualifiers_(Final)/2012/o"
+
+east11 <- "https://www.tfrrs.org/archived_lists/693/2011_NCAA_Division_I_East_POP_List_(FINAL)/2011/o"
+west11 <- "https://www.tfrrs.org/archived_lists/694/2011_NCAA_Division_I_West_POP_List_(FINAL)/2011/o"
+```
+
+# Fxns
+```{r}
+formTime <- function(time) {
+  formattedTime <- paste0(floor(as.numeric(time) / 60), ":", (str_pad(floor(as.numeric(time) %% 60), width = 2, side = "left", pad = "0")))
+  return(formattedTime)
+}
+
+getPL <- function(plURL, year, region) {
+  # Accountinf for conversions
+  pl <- read_html(plURL) %>%
+    html_table()
+  
+  for(i in 7:14)
+  {
+    results <- as.data.frame(pl[i])
+    
+    # Subset to only conversion times
+    results <- results %>%
+      select(ATHLETE, TEAM, TIME) %>%
+      mutate(
+        YEAR = year,
+        TEAM = toupper(TEAM),
+        GENDER = case_when(
+          i %% 2 == 0 ~ 'F',
+          T ~ 'M'
+        ),
+        EVENT = case_when(
+          i == 7 | i == 8 ~ '800m',
+          i == 9 | i == 10 ~ '1500m',
+          i == 11 | i == 12 ~ '5k',
+          T ~ '10k'
+        )
+      ) %>% 
+      group_by(GENDER, EVENT) %>%
+      arrange(TIME, .by_group = TRUE) %>%
+      mutate(
+        PLACE = 1:n(), 
+        REGION = region
+      )
+    
+    # Handle times
+    results$TIME = sapply(results$TIME, handleTimes)
+    results$NAME = sapply(results$ATHLETE, createName)
+    
+    # Rearrange columns
+    results <- results %>%
+      select(YEAR, EVENT, TIME, PLACE, NAME, GENDER, TEAM, REGION)
+  
+    if(exists("full_results"))
+    {
+      full_results <- rbind(full_results, results)
+    }
+    else
+    {
+      full_results <- results  
+    }
+    
+  }
+  
+  # Return data
+  return(full_results)
+  
+}
+```
+
+# Gather Data
+```{r}
+# Run for 2019
+df <- getPL(east19, "2019", "East")
+# Add on west region
+df <- rbind(df, getPL(west19, "2019", "West"))
+
+# Add every other year
+df <- rbind(df, getPL(east18, "2018", "East"))
+df <- rbind(df, getPL(west18, "2018", "West"))
+
+df <- rbind(df, getPL(east17, "2017", "East"))
+df <- rbind(df, getPL(west17, "2017", "West"))
+
+df <- rbind(df, getPL(east16, "2016", "East"))
+df <- rbind(df, getPL(west16, "2016", "West"))
+
+df <- rbind(df, getPL(east15, "2015", "East"))
+df <- rbind(df, getPL(west15, "2015", "West"))
+
+df <- rbind(df, getPL(east14, "2014", "East"))
+df <- rbind(df, getPL(west14, "2014", "West"))
+
+df <- rbind(df, getPL(east13, "2013", "East"))
+df <- rbind(df, getPL(west13, "2013", "West"))
+
+df <- rbind(df, getPL(east12, "2012", "East"))
+df <- rbind(df, getPL(west12, "2012", "West"))
+
+df <- rbind(df, getPL(east11, "2011", "East"))
+df <- rbind(df, getPL(west11, "2011", "West"))
+```
+
+# Grab 32nd Times
+```{r}
+cuts <- df %>%
+  filter(PLACE < 49)
+
+# Split into east/west, men/women
+east_men <- cuts %>%
+  filter(GENDER == 'M' & REGION == 'East')
+east_women <- cuts %>%
+  filter(GENDER == 'W' & REGION == 'East')
+west_men <- cuts %>%
+  filter(GENDER == 'M' & REGION == 'West')
+west_women <- cuts %>%
+  filter(GENDER == 'W' & REGION == 'West')
+
+men <- cuts %>%
+  filter(GENDER == 'M')
+
+women <- cuts %>%
+  filter(GENDER == 'W')
+```
+
+```{r}
+men_event <- men %>% filter(EVENT == '10k')
+
+men_event$formatted_time <- sapply(men_event$TIME, formTime)
+
+ggplot(men_event, aes(YEAR, -TIME, color = REGION)) +
+  geom_boxplot()
+```
+
+```{r}
+top_32 <- df %>%
+  filter(PLACE <= 32)
+
+mid_48 <- df %>%
+  filter(PLACE > 32 & PLACE <= 48)
+
+top <- df %>%
+  filter(PLACE <= 48)
+
+top_top <- levels(as.factor(top$TEAM))
+
+top_teams <- levels(as.factor(top_32$TEAM))
+top_teams <- unique(top_teams)
+
+mid_teams <- levels(as.factor(mid_48$TEAM))
+
+top_df <- as.data.frame(top_teams)
+mid_df <- as.data.frame(mid_teams)
+
+unq_teams <- mid_df %>%
+  filter(!(mid_teams %in% top_df$top_teams))
+```
+
+

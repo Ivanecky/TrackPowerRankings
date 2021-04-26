@@ -1,5 +1,4 @@
 # Code to generate line item performances from TFRRS.
-
 library(tidymodels)
 library(httr)
 library(dplyr)
@@ -19,15 +18,6 @@ source("ResultsQuery.R")
 # Connect to AWS
 # Read connection data from yaml
 aws.yml <- read_yaml("aws.yaml")
-
-# Connect to database
-aws <- dbConnect(
-  RPostgres::Postgres(),
-  host = aws.yml$host,
-  user = aws.yml$user,
-  password = aws.yml$password,
-  port = aws.yml$port
-)
 
 # Get performance list URLs
 # D1
@@ -80,11 +70,11 @@ outdoorD221 <- "https://www.tfrrs.org/lists/3194/2021_NCAA_Division_II_Outdoor_Q
 outdoorD321 <- "https://www.tfrrs.org/lists/3195/2021_NCAA_Division_III_Outdoor_Qualifying/2021/o"
 
 # Create list of URLs
-# urls <- c(indoorD117, indoorD118, indoorD119, indoorD120, indoorD121, indoorD111, indoorD112, indoorD113, indoorD114, indoorD115, indoorD116,
-#           indoorD217, indoorD218, indoorD219, indoorD220, indoorD221, indoorD211, indoorD212, indoorD213, indoorD214, indoorD215, indoorD216,
-#           indoorD317, indoorD318, indoorD319, indoorD320, indoorD321, indoorD311, indoorD312, indoorD313, indoorD314, indoorD315, indoorD316)
+urls <- c(indoorD117, indoorD118, indoorD119, indoorD120, indoorD121, indoorD111, indoorD112, indoorD113, indoorD114, indoorD115, indoorD116,
+          indoorD217, indoorD218, indoorD219, indoorD220, indoorD221, indoorD211, indoorD212, indoorD213, indoorD214, indoorD215, indoorD216,
+           indoorD317, indoorD318, indoorD319, indoorD320, indoorD321, indoorD311, indoorD312, indoorD313, indoorD314, indoorD315, indoorD316)
 
-urls <- c(outdoorD121, outdoorD221, outdoorD321, indoorD121) #, indoorD221, indoorD321)
+#urls <- c(outdoorD121, outdoorD221, outdoorD321, indoorD121) #, indoorD221, indoorD321)
 
 # Athlete URLs
 athletes <- c()
@@ -126,6 +116,15 @@ runners_grouped_yr <- groupedYearlyResults(runner_line_items)
 # Reformat data
 #df_format <- reformatRunners(runners_grouped)
 #yr_format <- reformatYearlyRunners(runners_grouped_yr)
+
+# Connect to database
+aws <- dbConnect(
+  RPostgres::Postgres(),
+  host = aws.yml$host,
+  user = aws.yml$user,
+  password = aws.yml$password,
+  port = aws.yml$port
+)
 
 # Write data to table
 dbRemoveTable(aws, "runners_grouped")
