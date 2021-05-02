@@ -272,7 +272,7 @@ readPerfListIndoor <- function(url){
     ) %>%
     mutate(PTS_PER_EVENT = POINTS / EVENTS) %>%
     mutate(
-      OVERALL_RANK = (0.3*POINTS) + (0.7*PTS_PER_EVENT)
+      OVERALL_RANK = (0.5*POINTS) + (0.5*PTS_PER_EVENT)
     ) %>%
     arrange(-OVERALL_RANK)
   
@@ -452,7 +452,7 @@ readPerfListOutdoor <- function(url){
       rankScore = 100 - PLACE + 1
     ) %>%
     mutate(
-      timeScore = 125 * (1 - timeRelAvg)
+      timeScore = 150 * (1 - timeRelAvg)
     ) %>%
     mutate(
       bonusScore = case_when(
@@ -503,7 +503,7 @@ readPerfListOutdoor <- function(url){
     ) %>%
     mutate(PTS_PER_EVENT = POINTS / EVENTS) %>%
     mutate(
-      OVERALL_RANK = (0.375*POINTS) + (0.625*PTS_PER_EVENT)
+      OVERALL_RANK = (0.5*POINTS) + (0.5*PTS_PER_EVENT)
     ) %>%
     arrange(-OVERALL_RANK)
   

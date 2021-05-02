@@ -66,14 +66,26 @@ getPerfListURLs = function(url) {
 
 # Function to handle times
 handleTimes <- function(mark) {
-  # Split the tenths/hundreths off
-  split_mark = unlist(strsplit(mark, "[.]"))
-  # Split into minutes & seconds
-  min_sec = unlist(strsplit(split_mark[1], ":"))
-  # Calculate seconds from minutes and add seconds
-  total_time = as.numeric(min_sec[1])*60 + as.numeric(min_sec[2])
-  # Return time 
-  return(total_time)
+  # Convert mark to character
+  mark <- as.character(mark)
+  # Check if mark has no colon (sprint time)
+  if (!(grepl(":", mark))) {
+    # Handle the parentheses for ties, etc
+    mark <- gsub("\\(.*","", mark)
+    mark <- gsub("@.*","", mark)
+    # Convert to numeric
+    mark <- as.numeric(mark)
+    return(mark)
+  } else {
+    # Split the tenths/hundreths off
+    split_mark = unlist(strsplit(mark, "[.]"))
+    # Split into minutes & seconds
+    min_sec = unlist(strsplit(split_mark[1], ":"))
+    # Calculate seconds from minutes and add seconds
+    total_time = as.numeric(min_sec[1])*60 + as.numeric(min_sec[2])
+    # Return time 
+    return(total_time)
+  }
 }
 
 ## runnerScrape Function

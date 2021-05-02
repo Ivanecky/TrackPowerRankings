@@ -18,6 +18,7 @@ library(reshape2)
 library(stringr)
 library(yaml)
 library(rvest)
+library(ggthemes)
 
 # Load functions for scraping
 source("Scraping_Fxns.R")
@@ -30,6 +31,9 @@ aws.yml <- read_yaml("aws.yaml")
 
 # Outdoor URLs
 ```{r}
+east21 <- "https://www.tfrrs.org/lists/3192/2021_NCAA_Division_I_East_Outdoor_Qualifying/2021/o"
+west21 <- "https://www.tfrrs.org/lists/3193/2021_NCAA_Division_I_West_Outdoor_Qualifying/2021/o"
+
 east19 <- "https://www.tfrrs.org/archived_lists/2569/2019_NCAA_Div._I_East_Outdoor_Qualifying_(FINAL)/2019/o"
 west19 <- "https://www.tfrrs.org/archived_lists/2570/2019_NCAA_Div._I_West_Outdoor_Qualifying_(FINAL)/2019/o"
 
@@ -70,7 +74,7 @@ getPL <- function(plURL, year, region) {
   pl <- read_html(plURL) %>%
     html_table()
   
-  for(i in 7:14)
+  for(i in 1:20)
   {
     results <- as.data.frame(pl[i])
     
@@ -78,17 +82,26 @@ getPL <- function(plURL, year, region) {
     results <- results %>%
       select(ATHLETE, TEAM, TIME) %>%
       mutate(
-        YEAR = year,
+        YEAR = as.numeroc(year),
         TEAM = toupper(TEAM),
         GENDER = case_when(
-          i %% 2 == 0 ~ 'F',
+          i %% 2 == 0 & i != 16 & i != 18 ~ 'F',
+          i == 15 | i == 17 ~ 'F',
           T ~ 'M'
         ),
         EVENT = case_when(
+          i == 1 | i == 2 ~ '100m',
+          i == 3 | i == 4 ~ '200m',
+          i == 5 | i == 6 ~ '400m',
           i == 7 | i == 8 ~ '800m',
           i == 9 | i == 10 ~ '1500m',
           i == 11 | i == 12 ~ '5k',
-          T ~ '10k'
+          i == 13 | i ==14 ~ '10k',
+          i == 15 ~ '100H',
+          i == 16 ~ '110H',
+          i == 17 | i == 18 ~ '400H',
+          i == 19 | i == 20 ~ '3000S',
+          T ~ 'OTHER'
         )
       ) %>% 
       group_by(GENDER, EVENT) %>%
@@ -154,9 +167,12 @@ df <- rbind(df, getPL(west12, "2012", "West"))
 
 df <- rbind(df, getPL(east11, "2011", "East"))
 df <- rbind(df, getPL(west11, "2011", "West"))
+
+df <- rbind(df, getPL(east21, "2021", "East"))
+df <- rbind(df, getPL(west21, "2021", "West"))
 ```
 
-# Grab 32nd Times
+# Grab 48nd Times
 ```{r}
 cuts <- df %>%
   filter(PLACE < 49)
@@ -184,31 +200,47 @@ men_event <- men %>% filter(EVENT == '10k')
 men_event$formatted_time <- sapply(men_event$TIME, formTime)
 
 ggplot(men_event, aes(YEAR, -TIME, color = REGION)) +
-  geom_boxplot()
+  geom_violin()
 ```
 
+# Get 48th Place Runners
 ```{r}
-top_32 <- df %>%
-  filter(PLACE <= 32)
+# Format times
+df$formatted_time <- sapply(df$TIME, formTime)
 
-mid_48 <- df %>%
-  filter(PLACE > 32 & PLACE <= 48)
+top_48 <- df %>%
+  filter(PLACE == 48)
 
-top <- df %>%
-  filter(PLACE <= 48)
+men48 <- top_48 %>%
+  filter(GENDER == 'M') %>%
+  group_by(YEAR, REGION, EVENT)
 
-top_top <- levels(as.factor(top$TEAM))
+women48 <- top_48 %>%
+  filter(GENDER == 'F') %>%
+  group_by(YEAR, REGION, EVENT)
 
-top_teams <- levels(as.factor(top_32$TEAM))
-top_teams <- unique(top_teams)
+ggplot(men48, aes(YEAR, TIME, color = REGION, group = REGION)) +
+  geom_point(size = 6) +
+  geom_line() +
+  facet_wrap(EVENT ~ ., scales = 'free') +
+  theme_fivethirtyeight() +
+  scale_color_fivethirtyeight() +
+  theme(text = element_text(size = 40)) + 
+  scale_y_continuous(labels = men48$formatted_time, breaks = men48$TIME) +
+  ggtitle("NCAA Regional Standards for Male Runners", 
+          subtitle = "Standards are based on the 48th time each year, the cut-off mark to qualify for regionals prior to scratches.")
 
-mid_teams <- levels(as.factor(mid_48$TEAM))
-
-top_df <- as.data.frame(top_teams)
-mid_df <- as.data.frame(mid_teams)
-
-unq_teams <- mid_df %>%
-  filter(!(mid_teams %in% top_df$top_teams))
+ggplot(women48, aes(YEAR, TIME, color = REGION, group = REGION)) +
+  geom_point(size = 6) +
+  geom_line() +
+  facet_wrap(EVENT ~ ., scales = 'free') +
+  theme_fivethirtyeight() +
+  scale_color_fivethirtyeight() +
+  theme(text = element_text(size = 40)) + 
+  scale_y_continuous(labels = women48$formatted_time, breaks = women48$TIME) +
+  ggtitle("NCAA Regional Standards for Female Runners", 
+          subtitle = "Standards are based on the 48th time each year, the cut-off mark to qualify for regionals prior to scratches.")
 ```
+
 
 
