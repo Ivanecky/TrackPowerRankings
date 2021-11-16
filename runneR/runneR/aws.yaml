@@ -1,0 +1,4 @@
+host: 'awsdb.cw8iivmua2hj.us-east-2.rds.amazonaws.com'
+user: 'postgres'
+password: 'password'
+port: 5432

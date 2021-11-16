@@ -1,0 +1,13 @@
+name: runneR
+title: runneR
+username:
+account: ivanecky
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 5141305
+bundleId: 5260010
+url: https://ivanecky.shinyapps.io/runneR/
+when: 1637103455.70268
+lastSyncTime: 1637103455.70269
+asMultiple: FALSE
+asStatic: FALSE
