@@ -1,6 +1,4 @@
 # Code to generate line item performances from TFRRS.
-# Parallel processing code to convert XC meet links into runner results
-
 library(tidymodels)
 library(httr)
 library(dplyr)
@@ -62,9 +60,9 @@ dbWriteTable(aws, "meet_links", joinLinks, append = TRUE)
 joinLinks <- joinLinks$links
 
 # Create a temporary dataframe for runner line item performance
-runner_lines = as.data.frame(cbind("year", "event", 1.1, 1.1, "meet", "meet date", TRUE, "name", "gender", "team_name", "team_division"))
+runner_lines = as.data.frame(cbind("year", "event", 1.1, 1.1, "meet", "meet date", TRUE, "name", "gender", "team_name"))
 # Rename columns
-names(runner_lines) = c("YEAR", "EVENT", "TIME", "PLACE", "MEET_NAME", "MEET_DATE", "PRELIM", "NAME", "GENDER", "TEAM", "DIVISION")
+names(runner_lines) = c("YEAR", "EVENT", "TIME", "PLACE", "MEET_NAME", "MEET_DATE", "PRELIM", "NAME", "GENDER", "TEAM")
 # Reformat var
 runner_lines <- runner_lines %>%
   mutate(
@@ -83,7 +81,7 @@ for (i in 1:length(joinLinks)) {
   tempURL <- gsub("[[:space:]]", "", joinLinks[i])
   
   # Check URL validity
-  if(tempURL %>% GET(., timeout(30), user_agent(randUsrAgnt())) %>% http_error()) {
+  if(class(try(read_html(tempURL))) == 'try-error') {
     print(paste0("Failed to get data for : ", tempURL))
     next
   }
@@ -93,9 +91,6 @@ for (i in 1:length(joinLinks)) {
 
   # Bind to existing data
   runner_lines <- rbind(runner_lines, meetResults)
-  
-  # Sleep for a sec
-  Sys.sleep(90)
 }
 
 # Pull current data out of table

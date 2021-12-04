@@ -14,9 +14,9 @@ library(doParallel)
 
 resultsQuery <- function(wp){
   # Create a temporary dataframe for runner line item performance
-  runner_lines = as.data.frame(cbind("year", "event", 1.1, 1.1, "meet", "meet date", TRUE, "name", "gender", "team_name"))
+  runner_lines = as.data.frame(cbind("year", "event", 1.1, 1.1, "meet", "meet date", TRUE, "name", "gender", "team_name", "team_division"))
   # Rename columns
-  names(runner_lines) = c("YEAR", "EVENT", "TIME", "PLACE", "MEET_NAME", "MEET_DATE", "PRELIM", "NAME", "GENDER", "TEAM")
+  names(runner_lines) = c("YEAR", "EVENT", "TIME", "PLACE", "MEET_NAME", "MEET_DATE", "PRELIM", "NAME", "GENDER", "TEAM", "DIVISION")
   # Reformat var
   runner_lines <- runner_lines %>%
     mutate(
@@ -36,7 +36,7 @@ resultsQuery <- function(wp){
   
   runner_lines <- foreach(i=1:length(wp), .combine = rbind) %dopar% {
     
-    source("Scraping_Fxns.R")
+    source("/Users/samivanecky/git/TrackPowerRankings/scrapeR/Scraping_Fxns.R")
     
     # Make function call
     runner_temp <- runnerScrape(wp[i])

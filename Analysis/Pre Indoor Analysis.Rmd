@@ -1,0 +1,194 @@
+---
+title: "Pre Indoor Analysis"
+author: "Samuel Ivanecky"
+date: "11/21/2021"
+output: html_document
+---
+
+# Setup
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Code to generate line item performances from TFRRS.
+library(tidymodels)
+library(httr)
+library(jsonlite)
+library(RPostgreSQL)
+library(DBI)
+library(RSQLite)
+library(reshape2)
+library(stringr)
+library(yaml)
+library(rvest)
+library(kit)
+library(fuzzyjoin)
+library(ggthemes)
+library(ggridges)
+library(ggrepel)
+library(zoo)
+library(dplyr)
+
+# Connect to AWS
+# Read connection data from yaml
+aws.yml <- read_yaml("/Users/samivanecky/git/TrackPowerRankings/aws.yaml")
+
+# Source file for functions
+source("/Users/samivanecky/git/TrackPowerRankings/scrapeR/Scraping_Fxns.R")
+
+# Connect to database
+aws <- dbConnect(
+  RPostgres::Postgres(),
+  host = aws.yml$host,
+  user = aws.yml$user,
+  password = aws.yml$password,
+  port = aws.yml$port
+)
+```
+
+# Query
+```{r}
+# Query base data & clean out errant results
+runner_line_items <- dbGetQuery(aws, "select distinct * from race_results") %>%
+  filter(EVENT != "OTHER") %>%
+  filter(
+    !(GENDER == "F" &
+       (
+          (EVENT == "Mile" & TIME < 240) |
+          (EVENT == "800m" & TIME < 110) |
+          (EVENT == "3000m" & TIME < 480) |
+          (EVENT == "5000m" & TIME < 900) |
+          (EVENT == "5K XC" & TIME < 900) |
+          (EVENT == "6K XC" & TIME < 1080) |
+          (EVENT == "3000S" & TIME < 480) |
+          (EVENT == "10K" & TIME < 1800) |
+          (EVENT == "4K XC" & TIME < 700)
+       )
+    ) &
+    !(GENDER == "M" &
+       (
+          (EVENT == "Mile" & TIME < 190) |
+          (EVENT == "800m" & TIME < 102) |
+          (EVENT == "3000m" & TIME < 430) |
+          (EVENT == "5000m" & TIME < 750) |
+          (EVENT == "5K XC" & TIME < 750) |
+          (EVENT == "8K XC" & TIME < 1260) |
+          (EVENT == "3000S" & TIME < 430) |
+          (EVENT == "10K" & TIME < 2500) |
+          (EVENT == "10K XC" & TIME < 2500) |
+          (EVENT == "6K XC" & TIME < 1000)
+       )
+    ) 
+  )
+
+runners_grouped <- groupedYearlyResults(runner_line_items)
+
+# Get seaason progressions by event
+runners_grouped <- runners_grouped %>%
+  group_by(NAME, GENDER, TEAM, DIVISION, EVENT) %>%
+  arrange(YEAR, .by_group = TRUE) %>%
+  mutate(
+    PR_PROG = lag(PR) - PR,
+    AVG_PLACE_PROG = lag(AVG_PLACE) - AVG_PLACE,
+    AVG_TIME_PROG = lag(AVG_TIME) - AVG_TIME,
+    WIN_PROG = WINS - lag(WINS),
+    WIN_PCT_PROG = WIN_PCT - lag(WIN_PCT)
+  )
+
+# Subset runners
+d1 <- runners_grouped %>%
+  filter(DIVISION == "D1")
+
+d2 <- runners_grouped %>%
+  filter(DIVISION == "D2") %>%
+  filter(GENDER == "F") %>%
+  filter(YEAR == 2021)
+
+```
+
+# Clean Data
+## Clean NCAA XC Performances
+```{r}
+ncaaXC <- runner_line_items %>%
+  filter(grepl("ncaa", tolower(MEET_NAME)) & grepl("championship", tolower(MEET_NAME))) %>%
+  filter(!(grepl("d2|division ii|division iii|d3", tolower(MEET_NAME)))) %>%
+  filter(grepl("cross country", tolower(MEET_NAME))) %>%
+  filter(!grepl("region", tolower(MEET_NAME))) %>%
+  filter(YEAR == "FR-1" & GENDER == "F")
+
+ncaas <- runner_line_items %>%
+  filter(grepl("ncaa", tolower(MEET_NAME)) & grepl("championship", tolower(MEET_NAME))) %>%
+  filter(!(grepl("d2|division ii|division iii|d3", tolower(MEET_NAME)))) %>%
+  filter(!grepl("cross country|region", tolower(MEET_NAME))) %>%
+  filter(EVENT %in% c("5000m", "3000m", "800m", "Mile")) %>%
+  filter(lubridate::month(lubridate::ymd(MEET_DATE)) < 5) %>%
+  filter(PRELIM == FALSE)
+```
+
+## Clean Grouped Data
+```{r}
+# Subset runners grouped data
+tf <- runners_grouped %>%
+  filter(!grepl("XC", EVENT)) %>%
+  mutate(
+    YEAR = as.numeric(YEAR)
+  ) %>%
+  rename(
+    EVENT_TF = EVENT,
+    AVG_PLACE_TF = AVG_PLACE,
+    AVG_TIME_TF = AVG_TIME,
+    WINS_TF = WINS,
+    WIN_PCT_TF = WIN_PCT,
+    PR_TF = PR
+  ) %>%
+  select(-c(TIMES.RUN))
+
+xc <- runners_grouped %>%
+  filter(EVENT %in% c("6K XC", "8K XC")) %>%
+  mutate(
+    JOIN_YR = as.numeric(YEAR) + 1
+  ) %>%
+  rename(
+    EVENT_XC = EVENT,
+    AVG_PLACE_XC = AVG_PLACE,
+    AVG_TIME_XC = AVG_TIME,
+    WINS_XC = WINS,
+    WIN_PCT_XC = WIN_PCT,
+    PR_XC = PR
+  ) %>%
+  select(-c(TIMES.RUN, YEAR))
+
+tf <- tf %>%
+  left_join(xc, by = c("NAME", "TEAM", "GENDER", "YEAR" = "JOIN_YR")) %>%
+  filter(!is.na(EVENT_XC) & !is.na(PR_XC)) %>%
+  funique() %>%
+  filter(!(GENDER == "F" & EVENT_TF == "5000m" & PR_TF < 910)) %>%
+  filter(PR_XC > 600)
+
+tf <- tf %>%
+  left_join(teamInfo, by = c("TEAM")) %>%
+  funique()
+```
+
+```{r}
+d1 <- tf %>%
+  filter(DIVISION == "D1") %>%
+  filter(NAME %in% ncaas$NAME)
+```
+
+# Quick Analysis
+```{r}
+temp <- d1 %>%
+  filter(GENDER == "F") %>%
+  filter(EVENT == "1500m")
+
+temp2 <- d1 %>%
+  filter(GENDER == "F" & NAME %in% temp$NAME) %>%
+  filter(EVENT == "3000m") %>%
+  group_by(NAME) %>%
+  summarise(
+    pr3k = min(PR)
+  )
+```
+
+

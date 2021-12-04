@@ -90,6 +90,22 @@ handleTimes <- function(mark) {
   }
 }
 
+## Function to select user agent 
+randUsrAgnt <- function() {
+  # Create list of user agents
+  usrAgents <- c(
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2311.135 Safari/537.36 Edge/12.246",
+    "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/47.0.2526.111 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_2) AppleWebKit/601.3.9 (KHTML, like Gecko) Version/9.0.2 Safari/601.3.9",
+    "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:15.0) Gecko/20100101 Firefox/15.0.1",
+    "Mozilla/5.0 (X11; CrOS x86_64 8172.45.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.64 Safari/537.36"
+  )
+  
+  # Return a random one
+  return(usrAgents[sample(1:length(usrAgents), 1)])
+  
+}
+
 ## runnerScrape Function
 runnerScrape <- function(url){
   
@@ -98,25 +114,26 @@ runnerScrape <- function(url){
   
     # Error checking. Validate URL
     if(class(try(url %>%
-                 GET(., timeout(30)) %>%
+                 GET(., timeout(30), user_agent(randUsrAgnt())) %>%
                  read_html())) == 'try-error') {
       print(paste0("Failed to get data for : ", url))
       return(NA)
     } else {
+      
+      # Get page HTML
+      html <-  url %>%
+        GET(., timeout(30), user_agent(randUsrAgnt())) %>%
+        read_html()
     
       # Get the name of the runner off of TFRRS HTML
-      runner_name <- url %>%
-        GET(., timeout(30)) %>%
-        read_html() %>%
+      runner_name <- html %>%
         html_nodes("h3") %>%
         html_text()
       
       runner_name <- unlist(strsplit(runner_name[1], "[\n]"))[1]
       
       # Extract team name
-      team_name <- url %>%
-        GET(., timeout(30)) %>%
-        read_html() %>%
+      team_name <- html %>%
         html_node(xpath = "/html/body/form/div/div/div/div[1]/a[3]/h3") %>%
         html_text()
       
@@ -124,24 +141,43 @@ runnerScrape <- function(url){
       team_name <- gsub('\\n', '', team_name)
       
       # Pull gender out via team link
-      team_link <- url %>%
-        GET(., timeout(30)) %>%
-        read_html() %>%
+      team_link <- html %>%
         html_node(xpath = "/html/body/form/div/div/div/div[1]/a[3]") %>%
         html_attr("href")
+      
+      # Navigate to team link and extract division
+      # Convert team page link
+      team_link <- paste0("https:", team_link)
+      team_link <- paste0(substr(team_link, 1, nchar(team_link)-3), "tml")
+      
+      # Get text info for division
+      team_page <- team_link %>%
+        GET(., timeout(30)) %>%
+        read_html() %>%
+        html_node(xpath = "/html/body/form/div/div/div/div/div/div/span") %>%
+        html_text()
+      
+      # Assign division
+      team_division <- case_when(
+        grepl("NAIA", team_page) ~ "NAIA",
+        grepl("NJCAA", team_page) ~ "NJCAA",
+        grepl("DIII", team_page) ~ "D3",
+        grepl("DII", team_page) ~ "D2",
+        grepl("DI", team_page) ~ "D1",
+        T ~ "OTHER"
+      )
       
       # Check if mens or womens team
       gender <- case_when(
         grepl("college_m", team_link) ~ 'M',
-        T ~ 'F'
+        grepl("college_f", team_link) ~ 'F',
+        T ~ 'Other/NA'
       )
       
       # Print statement
-      print(paste0("Getting data for: ", runner_name))
+      print(paste0("Getting data for: ", stringr::str_to_title(runner_name)))
       
-      runner <- url %>%
-        GET(., timeout(30)) %>%
-        read_html() %>%
+      runner <- html %>%
         html_nodes(xpath = '/html/body/form/div/div/div/div[3]/div/div/div[1]') %>%
         html_nodes("tr")
       
@@ -173,7 +209,7 @@ runnerScrape <- function(url){
       for(i in 1:length(keep_nodes))
       {
         # Check for a year (date)
-        if(grepl("2005|2006|2007|2008|2009|2010|2011|2012|2013|2014|2015|2016|2017|2018|2019|2020|2021", keep_nodes[i]))
+        if(grepl("2005|2006|2007|2008|2009|2010|2011|2012|2013|2014|2015|2016|2017|2018|2019|2020|2021|2022|2023", keep_nodes[i]))
         {
           # Convert to string
           node_str <- as.character(keep_nodes[i])
@@ -197,6 +233,7 @@ runnerScrape <- function(url){
             grepl('2019', node_str) ~ '2019',
             grepl('2020', node_str) ~ '2020',
             grepl('2021', node_str) ~ '2021',
+            grepl('2022', node_str) ~ '2022',
             T ~ 'OTHER'
           )
           
@@ -257,7 +294,7 @@ runnerScrape <- function(url){
           # Now we extract results
           for (j in (i+1):length(keep_nodes))
           {
-            if(grepl("2005|2006|2007|2008|2009|2010|2011|2012|2013|2014|2015|2016|2017|2018|2019|2020|2021", keep_nodes[j]))
+            if(grepl("2005|2006|2007|2008|2009|2010|2011|2012|2013|2014|2015|2016|2017|2018|2019|2020|2021|2022", keep_nodes[j]))
             {
               # If so, break out
               break
@@ -306,9 +343,9 @@ runnerScrape <- function(url){
         # Print error message
         print(paste0("Error getting data for: ", runner_name))
         # Set to empty, default values
-        athlete <- as.data.frame(cbind("year", "event", 1.1, 1.1, "meet", "meet date", TRUE, "name", "gender", "team_name"))
+        athlete <- as.data.frame(cbind("year", "event", 1.1, 1.1, "meet", "meet date", TRUE, "name", "gender", "team_name", "team_division"))
         # Rename columns
-        names(athlete) = c("YEAR", "EVENT", "TIME", "PLACE", "MEET_NAME", "MEET_DATE", "PRELIM", "NAME", "GENDER", "TEAM")
+        names(athlete) = c("YEAR", "EVENT", "TIME", "PLACE", "MEET_NAME", "MEET_DATE", "PRELIM", "NAME", "GENDER", "TEAM", "DIVISION")
       } else {
         # Create a data frame
         athlete <- as.data.frame(cbind(years, events, times, places, race_names, dates, prelims))
@@ -341,7 +378,7 @@ runnerScrape <- function(url){
               grepl("3000|3K|3k", EVENT) & !grepl("3000S|3000mS|3000SC|.3", EVENT) ~ "3000m",
               grepl("mile|Mile|MILE", EVENT) ~ "Mile",
               grepl("4K|4.1K", EVENT) ~ "4K XC",
-              grepl("6K|6k|6000|6.", EVENT) ~ "6K XC",
+              grepl("6K|6k|6000|6.", EVENT) & (lubridate::month(lubridate::ymd(MEET_DATE)) %in% c(8, 9, 10, 11)) ~ "6K XC",
               grepl("800|800m", EVENT) & !grepl("8000m|8000", EVENT) ~ "800m",
               grepl("8k|8K|8000m", EVENT) & !grepl("\\.", EVENT) ~ "8K XC",
               grepl("10,000|10K|10k|10000", EVENT) & grepl("XC|xc|Xc", EVENT) ~ "10K XC",
@@ -365,9 +402,9 @@ runnerScrape <- function(url){
         # Check to see if data was nullified
         if (nrow(athlete) == 0) {
           # Set to empty, default values
-          athlete <- as.data.frame(cbind("year", "event", 1.1, 1.1, "meet", "meet date", TRUE, "name", "gender", "team_name"))
+          athlete <- as.data.frame(cbind("year", "event", 1.1, 1.1, "meet", "meet date", TRUE, "name", "gender", "team_name", "team_division"))
           # Rename columns
-          names(athlete) = c("YEAR", "EVENT", "TIME", "PLACE", "MEET_NAME", "MEET_DATE", "PRELIM", "NAME", "GENDER", "TEAM")
+          names(athlete) = c("YEAR", "EVENT", "TIME", "PLACE", "MEET_NAME", "MEET_DATE", "PRELIM", "NAME", "GENDER", "TEAM", "DIVISION")
           # Return
           return(athlete)
         } 
@@ -377,17 +414,18 @@ runnerScrape <- function(url){
         athlete$NAME <- runner_name
         athlete$GENDER <- gender
         athlete$TEAM <- team_name
+        athlete$DIVISION <- team_division
         
-      } else if (nrow(athlete) == 0){
+      } else if (nrow(athlete) == 0) {
         # Set to empty, default values
-        athlete <- as.data.frame(cbind("year", "event", 1.1, 1.1, "meet", "meet date", TRUE, "name", "gender", "team_name"))
+        athlete <- as.data.frame(cbind("year", "event", 1.1, 1.1, "meet", "meet date", TRUE, "name", "gender", "team_name", "team_division"))
         # Rename columns
-        names(athlete) = c("YEAR", "EVENT", "TIME", "PLACE", "MEET_NAME", "MEET_DATE", "PRELIM", "NAME", "GENDER", "TEAM")
+        names(athlete) = c("YEAR", "EVENT", "TIME", "PLACE", "MEET_NAME", "MEET_DATE", "PRELIM", "NAME", "GENDER", "TEAM", "DIVISION")
       } else {
         # Set to empty, default values
-        athlete <- as.data.frame(cbind("year", "event", 1.1, 1.1, "meet", "meet date", TRUE, "name", "gender", "team_name"))
+        athlete <- as.data.frame(cbind("year", "event", 1.1, 1.1, "meet", "meet date", TRUE, "name", "gender", "team_name", "team_division"))
         # Rename columns
-        names(athlete) = c("YEAR", "EVENT", "TIME", "PLACE", "MEET_NAME", "MEET_DATE", "PRELIM", "NAME", "GENDER", "TEAM")
+        names(athlete) = c("YEAR", "EVENT", "TIME", "PLACE", "MEET_NAME", "MEET_DATE", "PRELIM", "NAME", "GENDER", "TEAM", "DIVISION")
       }
     
       # Final return call
@@ -417,7 +455,7 @@ groupedResults <- function(athleteDF){
 groupedYearlyResults <- function(athleteDF){
   athlete <- athleteDF %>%
     filter(PRELIM == FALSE) %>%
-    group_by(NAME, GENDER, TEAM, EVENT, YEAR) %>%
+    group_by(NAME, GENDER, TEAM, DIVISION, EVENT, YEAR) %>%
     summarise(
       AVG_PLACE = round(mean(PLACE, na.rm = T), 2),
       AVG_TIME = round(mean(TIME), 2),

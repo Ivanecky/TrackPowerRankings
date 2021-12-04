@@ -1,6 +1,4 @@
 # Code to generate line item performances from TFRRS.
-# Parallel processing code to convert XC meet links into runner results
-
 library(tidymodels)
 library(httr)
 library(dplyr)
@@ -83,19 +81,16 @@ for (i in 1:length(joinLinks)) {
   tempURL <- gsub("[[:space:]]", "", joinLinks[i])
   
   # Check URL validity
-  if(tempURL %>% GET(., timeout(30), user_agent(randUsrAgnt())) %>% http_error()) {
+  if(class(try(read_html(tempURL))) == 'try-error') {
     print(paste0("Failed to get data for : ", tempURL))
     next
   }
   
   # Call query function
-  meetResults <- xcMeetResQuery(tempURL)
-
+  meetResults <- indoorMeetResQuery(tempURL)
+  
   # Bind to existing data
   runner_lines <- rbind(runner_lines, meetResults)
-  
-  # Sleep for a sec
-  Sys.sleep(90)
 }
 
 # Pull current data out of table
@@ -120,7 +115,7 @@ runRecs <- runner_lines %>%
 
 # Remove runners from current data that are in the just pulled data
 currentData <- currentData %>%
- filter(!(RUNNER_KEY %in% runRecs$RUNNER_KEY))
+  filter(!(RUNNER_KEY %in% runRecs$RUNNER_KEY))
 
 # Join data from old & new
 uploadData <- rbind(runRecs, currentData)
@@ -130,5 +125,12 @@ uploadData <- rbind(runRecs, currentData)
 # dbRemoveTable(aws, "runners_grouped")
 # dbCreateTable(aws, "race_results", runRecs)
 dbWriteTable(aws, "race_results", uploadData, overwrite = TRUE)
+
+
+
+
+
+
+
 
 

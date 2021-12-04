@@ -12,21 +12,21 @@ library(yaml)
 library(rvest)
 
 # Load functions for scraping
-source("/Users/samivanecky/git/TrackPowerRankings/Scraping_Fxns.R")
-source("/Users/samivanecky/git/TrackPowerRankings/ResultsQuery.R")
+source("/Users/samivanecky/git/TrackPowerRankings/scrapeR/Scraping_Fxns.R")
+source("/Users/samivanecky/git/TrackPowerRankings/scrapeR/ResultsQuery.R")
 
 # Connect to AWS
 # Read connection data from yaml
-aws.yml <- read_yaml("aws.yaml")
+aws.yml <- read_yaml("/Users/samivanecky/git/TrackPowerRankings/aws.yaml")
 
 # Get performance list URLs
 # D1
-# indoorD111 <- "https://www.tfrrs.org/archived_lists/607/2010_2011_NCAA_Div._I_Indoor_POP_List_(Final)/2011/i"
-# indoorD112 <- "https://www.tfrrs.org/archived_lists/769/2011_2012_NCAA_Div._I_Indoor_Qualifiers_(FINAL)/2012/i"
-# indoorD113 <- "https://www.tfrrs.org/archived_lists/942/2012_2013_NCAA_Div._I_Indoor_Qualifying_(FINAL)/2013/i"
-# indoorD114 <- "https://www.tfrrs.org/archived_lists/1139/2013_2014_NCAA_Div._I_Indoor_Qualifying_(FINAL)/2014/i"
-# indoorD115 <- "https://www.tfrrs.org/archived_lists/1345/2014_2015_NCAA_Div._I_Indoor_Qualifying_(FINAL)/2015/i"
-# indoorD116 <- "https://www.tfrrs.org/archived_lists/1569/2015_2016_NCAA_Div._I_Indoor_Qualifying_(FINAL)/2016/i"
+indoorD111 <- "https://www.tfrrs.org/archived_lists/607/2010_2011_NCAA_Div._I_Indoor_POP_List_(Final)/2011/i"
+indoorD112 <- "https://www.tfrrs.org/archived_lists/769/2011_2012_NCAA_Div._I_Indoor_Qualifiers_(FINAL)/2012/i"
+indoorD113 <- "https://www.tfrrs.org/archived_lists/942/2012_2013_NCAA_Div._I_Indoor_Qualifying_(FINAL)/2013/i"
+indoorD114 <- "https://www.tfrrs.org/archived_lists/1139/2013_2014_NCAA_Div._I_Indoor_Qualifying_(FINAL)/2014/i"
+indoorD115 <- "https://www.tfrrs.org/archived_lists/1345/2014_2015_NCAA_Div._I_Indoor_Qualifying_(FINAL)/2015/i"
+indoorD116 <- "https://www.tfrrs.org/archived_lists/1569/2015_2016_NCAA_Div._I_Indoor_Qualifying_(FINAL)/2016/i"
 indoorD117 <- "https://www.tfrrs.org/archived_lists/1797/2016_2017_NCAA_Div._I_Indoor_Qualifying_(FINAL)/2017/i"
 indoorD118 <- "https://www.tfrrs.org/archived_lists/2124/2017_2018_NCAA_Div._I_Indoor_Qualifying_(FINAL)/2018/i"
 indoorD119 <- "https://www.tfrrs.org/archived_lists/2324/2018_2019_NCAA_Div._I_Indoor_Qualifying_(FINAL)/2019/i"
@@ -40,11 +40,11 @@ indoorD121 <- "https://www.tfrrs.org/lists/3157/2020_2021_NCAA_Division_I_Indoor
 # indoorD214 <- "https://www.tfrrs.org/archived_lists/1140/2013_2014_NCAA_Div._II_Indoor_Qualifying_(FINAL)/2014/i"
 # indoorD215 <- "https://www.tfrrs.org/archived_lists/1347/2014_2015_NCAA_Div._II_Indoor_Qualifying_(FINAL)/2015/i"
 # indoorD216 <- "https://www.tfrrs.org/archived_lists/1570/2015_2016_NCAA_Div._II_Indoor_Qualifying_(FINAL)/2016/i"
-indoorD217 <- "https://www.tfrrs.org/archived_lists/1798/2016_2017_NCAA_Div._II_Indoor_Qualifying_(FINAL)/2017/i"
-indoorD218 <- "https://www.tfrrs.org/archived_lists/2125/2017_2018_NCAA_Div._II_Indoor_Qualifying_(FINAL)/2018/i"
-indoorD219 <- "https://www.tfrrs.org/archived_lists/2325/2018_2019_NCAA_Div._II_Indoor_Qualifying_(FINAL)/2019/i"
-indoorD220 <- "https://www.tfrrs.org/lists/2771/2019_2020_NCAA_Div._II_Indoor_Qualifying_(FINAL)"
-indoorD221 <- "https://www.tfrrs.org/lists/3158/2020_2021_NCAA_Division_II_Indoor_Qualifying_List/2021/i"
+# indoorD217 <- "https://www.tfrrs.org/archived_lists/1798/2016_2017_NCAA_Div._II_Indoor_Qualifying_(FINAL)/2017/i"
+# indoorD218 <- "https://www.tfrrs.org/archived_lists/2125/2017_2018_NCAA_Div._II_Indoor_Qualifying_(FINAL)/2018/i"
+# indoorD219 <- "https://www.tfrrs.org/archived_lists/2325/2018_2019_NCAA_Div._II_Indoor_Qualifying_(FINAL)/2019/i"
+# indoorD220 <- "https://www.tfrrs.org/lists/2771/2019_2020_NCAA_Div._II_Indoor_Qualifying_(FINAL)"
+# indoorD221 <- "https://www.tfrrs.org/lists/3158/2020_2021_NCAA_Division_II_Indoor_Qualifying_List/2021/i"
 
 # D3
 # indoorD311 <- "https://www.tfrrs.org/archived_lists/609/2010_2011_NCAA_Div._III_Indoor_POP_List_(Final)/2011/i"
@@ -53,11 +53,11 @@ indoorD221 <- "https://www.tfrrs.org/lists/3158/2020_2021_NCAA_Division_II_Indoo
 # indoorD314 <- "https://www.tfrrs.org/archived_lists/1141/2013_2014_NCAA_Div._III_Indoor_Qualifying_(FINAL)/2014/i"
 # indoorD315 <- "https://www.tfrrs.org/archived_lists/1353/2014_2015_NCAA_Div._III_Indoor_Qualifying_(FINAL)/2015/i"
 # indoorD316 <- "https://www.tfrrs.org/archived_lists/1571/2015_2016_NCAA_Div._III_Indoor_Qualifying_(FINAL)/2016/i"
-indoorD317 <- "https://www.tfrrs.org/archived_lists/1799/2016_2017_NCAA_Div._III_Indoor_Qualifying_(FINAL)/2017/i"
-indoorD318 <- "https://www.tfrrs.org/archived_lists/2126/2017_2018_NCAA_Div._III_Indoor_Qualifying_(FINAL)/2018/i"
-indoorD319 <- "https://www.tfrrs.org/archived_lists/2326/2018_2019_NCAA_Div._III_Indoor_Qualifying_(FINAL)/2019/i"
-indoorD320 <- "https://www.tfrrs.org/lists/2772/2019_2020_NCAA_Div._III_Indoor_Qualifying_(FINAL)/2020/i"
-indoorD321 <- "https://www.tfrrs.org/lists/3161/2020_2021_NCAA_Division_III_Indoor_Qualifying_List/2021/i"
+# indoorD317 <- "https://www.tfrrs.org/archived_lists/1799/2016_2017_NCAA_Div._III_Indoor_Qualifying_(FINAL)/2017/i"
+# indoorD318 <- "https://www.tfrrs.org/archived_lists/2126/2017_2018_NCAA_Div._III_Indoor_Qualifying_(FINAL)/2018/i"
+# indoorD319 <- "https://www.tfrrs.org/archived_lists/2326/2018_2019_NCAA_Div._III_Indoor_Qualifying_(FINAL)/2019/i"
+# indoorD320 <- "https://www.tfrrs.org/lists/2772/2019_2020_NCAA_Div._III_Indoor_Qualifying_(FINAL)/2020/i"
+# indoorD321 <- "https://www.tfrrs.org/lists/3161/2020_2021_NCAA_Division_III_Indoor_Qualifying_List/2021/i"
 
 # Set URLs to be scraped
 # D1
@@ -70,11 +70,7 @@ outdoorD221 <- "https://www.tfrrs.org/lists/3194/2021_NCAA_Division_II_Outdoor_Q
 outdoorD321 <- "https://www.tfrrs.org/lists/3195/2021_NCAA_Division_III_Outdoor_Qualifying/2021/o"
 
 # Create list of URLs
-# urls <- c(indoorD117, indoorD118, indoorD119, indoorD120, indoorD121, indoorD111, indoorD112, indoorD113, indoorD114, indoorD115, indoorD116,
-#           indoorD217, indoorD218, indoorD219, indoorD220, indoorD221, indoorD211, indoorD212, indoorD213, indoorD214, indoorD215, indoorD216,
-#            indoorD317, indoorD318, indoorD319, indoorD320, indoorD321, indoorD311, indoorD312, indoorD313, indoorD314, indoorD315, indoorD316)
-
-urls <- c(indoorD121) 
+urls <- c(indoorD117, indoorD118, indoorD119, indoorD120, indoorD121, indoorD111, indoorD112, indoorD113, indoorD114, indoorD115, indoorD116)
 
 # Athlete URLs
 athletes <- c()
